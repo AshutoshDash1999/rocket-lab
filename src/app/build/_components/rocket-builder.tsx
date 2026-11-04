@@ -6,23 +6,34 @@ import {
   type Box,
   type Camera,
   fitCamera,
+  GRID,
+  type PartBox,
   type PlacedPart,
   type Point,
   SEAM,
+  type Snap,
   screenToWorld,
   snapPosition,
   stackColumn,
   ZOOM_STEP,
   zoomAt,
 } from "@/lib/rocket/canvas";
+import { canStack } from "@/lib/rocket/fit";
 import type { PartId } from "@/lib/rocket/parts";
+import { analyzeStack, settleStack } from "@/lib/rocket/stack";
 import { computeRocketStats } from "@/lib/rocket/stats";
 import { useRocketStore } from "@/lib/rocket/store/rocket-store";
 import { BlueprintCanvas } from "./blueprint-canvas";
 import { PartsCatalog } from "./parts-catalog";
 import { TopBar } from "./top-bar";
 
-const STARTER: PartId[] = ["capsule", "tank-large", "engine-large", "legs"];
+const STARTER: PartId[] = [
+  "parachute",
+  "capsule",
+  "tank-large",
+  "engine-large",
+  "legs",
+];
 
 /** Pointer travel (px) before a press turns into a drag, so clicks stay clicks. */
 const DRAG_THRESHOLD = 4;
@@ -37,7 +48,7 @@ interface Drag {
   grab: Point;
   pointer: Point;
   /** Snapped landing spot in world units, when over the canvas. */
-  landing: (Box & { stacked: boolean }) | null;
+  landing: (Box & Snap) | null;
   overSidebar: boolean;
 }
 
@@ -67,9 +78,10 @@ const nextUidAfter = (parts: readonly PlacedPart[]) =>
     ...parts.map((p) => Number(p.uid.match(/^part-(\d+)$/)?.[1] ?? -1)),
   ) + 1;
 
-const boxOf = (p: PlacedPart): Box => ({
+const boxOf = (p: PlacedPart): PartBox => ({
   x: p.x,
   y: p.y,
+  partId: p.partId,
   ...partSize(p.partId),
 });
 
@@ -93,7 +105,8 @@ export function RocketBuilder() {
     partsRef.current = parts;
   }, [parts]);
 
-  const stats = computeRocketStats(parts.map((p) => p.partId));
+  const info = analyzeStack(parts, partSize);
+  const stats = computeRocketStats(info.chain.map((p) => p.partId));
   const edit = (fn: (ps: PlacedPart[]) => PlacedPart[]) => setParts(fn);
   const removePart = (uid: string) =>
     edit((ps) => ps.filter((p) => p.uid !== uid));
@@ -137,7 +150,8 @@ export function RocketBuilder() {
   useLayoutEffect(() => {
     const b = canvasBounds();
     void Promise.resolve(useRocketStore.persist.rehydrate()).then(() => {
-      const saved = useRocketStore.getState().parts;
+      // Saved rockets may predate a part's current drawing size: re-seat them.
+      const saved = settleStack(useRocketStore.getState().parts, partSize);
       if (saved.length > 0) {
         nextId.current = nextUidAfter(saved);
         setParts(saved);
@@ -170,7 +184,10 @@ export function RocketBuilder() {
         const others = partsRef.current
           .filter((p) => source.kind !== "canvas" || p.uid !== source.uid)
           .map(boxOf);
-        landing = { ...snapPosition(raw, size, others), ...size };
+        landing = {
+          ...snapPosition(raw, size, source.partId, others),
+          ...size,
+        };
       }
       return {
         source,
@@ -221,6 +238,8 @@ export function RocketBuilder() {
       if (!d) return;
       setDrag(null);
       const { source, landing } = d;
+      // A spot the part doesn't fit refuses the drop: nothing moves.
+      if (landing?.fit === "blocked") return;
       if (landing) {
         const { x, y } = landing;
         if (source.kind === "catalog") {
@@ -337,18 +356,28 @@ export function RocketBuilder() {
       cameraRef.current,
     );
     edit((ps) => {
-      const lowest = ps
-        .map(boxOf)
-        .reduce<Box | null>(
-          (lo, b) => (!lo || b.y + b.h > lo.y + lo.h ? b : lo),
-          null,
-        );
-      const spot = lowest
-        ? {
-            x: lowest.x + lowest.w / 2 - size.w / 2,
-            y: lowest.y + lowest.h - SEAM,
-          }
-        : { x: centre.x - size.w / 2, y: centre.y - size.h / 2 };
+      const { chain } = analyzeStack(ps, partSize);
+      const top = chain.at(0);
+      const bottom = chain.at(-1);
+      let spot: Point;
+      if (bottom && canStack(bottom.partId, partId)) {
+        const b = boxOf(bottom);
+        spot = { x: b.x + b.w / 2 - size.w / 2, y: b.y + b.h - SEAM };
+      } else if (top && canStack(partId, top.partId)) {
+        const t = boxOf(top);
+        spot = { x: t.x + t.w / 2 - size.w / 2, y: t.y - size.h + SEAM };
+      } else if (ps.length > 0) {
+        // Doesn't fit either end: park it beside the rocket to place by hand.
+        const boxes = ps.map(boxOf);
+        const right = Math.max(...boxes.map((b) => b.x + b.w));
+        const floor = Math.max(...boxes.map((b) => b.y + b.h));
+        spot = {
+          x: Math.round((right + 40) / GRID) * GRID,
+          y: Math.round((floor - size.h) / GRID) * GRID,
+        };
+      } else {
+        spot = { x: centre.x - size.w / 2, y: centre.y - size.h / 2 };
+      }
       return [...ps, { uid, partId, ...spot }];
     });
   };
@@ -364,8 +393,8 @@ export function RocketBuilder() {
     >
       <TopBar
         stats={stats}
-        partCount={parts.length}
-        onLaunch={() => useRocketStore.getState().setParts(parts)}
+        info={info}
+        onLaunch={() => useRocketStore.getState().setParts(info.chain)}
         onClear={() => edit(() => [])}
       />
       <div className="flex min-h-0 flex-1 flex-col-reverse md:grid md:grid-cols-[300px_minmax(0,1fr)]">
@@ -387,6 +416,8 @@ export function RocketBuilder() {
           camera={camera}
           panning={panning}
           parts={parts}
+          loose={info.loose}
+          badJoints={info.badJoints}
           draggingUid={drag?.source.kind === "canvas" ? drag.source.uid : null}
           landing={drag?.landing ?? null}
           onPressCanvas={startPan}

@@ -226,16 +226,33 @@ const ART: Record<PartId | "flame", Art> = {
       </>
     ),
   },
+  /**
+   * Chute canister on the capsule's apex. Its collar hangs below the box and
+   * follows the capsule's cone (the capsule curve, shifted by height − SEAM),
+   * so it must draw above the part beneath it: see `overlapsBelow`.
+   */
   parachute: {
-    height: 42,
+    height: 28,
     body: (
       <>
-        <path d="M46 36 C46 14 62 4 80 4 C98 4 114 14 114 36 Z" fill={C.red} />
         <path
-          d="M80 4 C71 12 69 24 70 36 H90 C91 24 89 12 80 4 Z"
+          d="M65 39 H95 C99 43 103 47 106.6 51 Q80 56.5 53.4 51 C57 47 61 43 65 39 Z"
+          fill={C.gray}
+        />
+        <path
+          d="M64 40 V24 C64 13 71 7 80 7 C89 7 96 13 96 24 V40 Z"
+          fill={C.red}
+        />
+        <path
+          d="M80 7 C76 12 75 20 75 40 H85 C85 20 84 12 80 7 Z"
           fill={C.white}
         />
-        <rect x="42" y="33" width="76" height="7" rx="3.5" fill={C.gray} />
+        <rect x="72" y="2" width="16" height="6" rx="3" fill={C.gray} />
+        <g stroke="none" fill={PEN}>
+          <circle cx="68" cy="47" r="1.8" />
+          <circle cx="80" cy="48.5" r="1.8" />
+          <circle cx="92" cy="47" r="1.8" />
+        </g>
       </>
     ),
   },
@@ -521,6 +538,12 @@ export function FlameShape() {
 }
 
 export const PART_WIDTH = WIDTH;
+
+/** Parts whose art wraps over the top of the part below, so they draw above it. */
+export const overlapsBelow = (partId: PartId) => partId === "parachute";
+
+/** Where a deployed canopy's lines meet the parachute part, px from its top. */
+export const CHUTE_ANCHOR_Y = 3;
 
 /** Drawn size of a part on the canvas, px. */
 export const partSize = (partId: PartId) => ({

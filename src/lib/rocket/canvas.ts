@@ -1,4 +1,8 @@
+import { fitReason } from "./fit";
 import type { PartId } from "./parts";
+
+/** Drawing px per metre: the starter rocket (~380 px) is ~19 m tall. */
+export const DRAWING_PX_PER_M = 20;
 
 /** A part placed freely on the canvas. x/y is its top-left corner in canvas px. */
 export interface PlacedPart {
@@ -79,43 +83,79 @@ export function fitCamera(boxes: readonly Box[], view: Size, pad = 60): Camera {
   };
 }
 
+/** A part on the canvas, as snapping sees it. */
+export type PartBox = Box & { partId: PartId };
+
+/**
+ * ok: joins the stack. blocked: the nearest stack slot doesn't fit, so the
+ * drop is refused. free: nothing close, lands on the grid.
+ */
+export type Fit = "ok" | "blocked" | "free";
+
+export type Snap = Point & { fit: Fit; reason?: string };
+
 /**
  * Where a part dropped at `raw` lands: stacked onto a nearby part's top or
- * bottom edge (centred on it) if one is close, otherwise snapped to the grid.
+ * bottom edge (centred on it) if it fits there, otherwise snapped to the grid.
+ * A close slot it doesn't fit comes back as `blocked` with the reason.
  * Coordinates are world units; the canvas is unbounded.
  */
 export function snapPosition(
   raw: Point,
   size: Size,
-  others: readonly Box[],
-): Point & { stacked: boolean } {
+  partId: PartId,
+  others: readonly PartBox[],
+): Snap {
   const cx = raw.x + size.w / 2;
-  let best: Point | null = null;
   // Dropping onto a part counts as stacking: reach scales with the part's height.
-  let bestDist = Math.max(MAGNET, size.h * 0.6);
+  const reach = Math.max(MAGNET, size.h * 0.6);
+  let ok: { p: Point; d: number } | null = null;
+  let blocked: { p: Point; d: number; reason: string } | null = null;
+
+  /** The part whose edge would touch `slot` from the given side, if any. */
+  const neighbour = (slot: Point, side: "above" | "below") =>
+    others.find(
+      (b) =>
+        Math.abs(b.x + b.w / 2 - (slot.x + size.w / 2)) <= 1 &&
+        (side === "below"
+          ? Math.abs(b.y - (slot.y + size.h - SEAM)) <= 1
+          : Math.abs(b.y + b.h - SEAM - slot.y) <= 1),
+    );
 
   for (const o of others) {
     const ocx = o.x + o.w / 2;
     if (Math.abs(cx - ocx) > Math.min(size.w, o.w) / 2) continue;
     const x = ocx - size.w / 2;
-    const below = { x, y: o.y + o.h - SEAM };
-    const above = { x, y: o.y - size.h + SEAM };
-    for (const c of [below, above]) {
+    const slots: Point[] = [
+      { x, y: o.y + o.h - SEAM },
+      { x, y: o.y - size.h + SEAM },
+    ];
+    for (const c of slots) {
       const d = Math.abs(raw.y - c.y);
-      // Skip slots already taken by another part.
-      if (d < bestDist && !others.some((b) => collides({ ...c, ...size }, b))) {
-        bestDist = d;
-        best = c;
+      // Skip slots out of reach or already taken by another part.
+      if (d >= reach || others.some((b) => collides({ ...c, ...size }, b)))
+        continue;
+      const up = neighbour(c, "above");
+      const down = neighbour(c, "below");
+      const reason =
+        (up && fitReason(up.partId, partId)) ||
+        (down && fitReason(partId, down.partId)) ||
+        null;
+      if (!reason) {
+        if (!ok || d < ok.d) ok = { p: c, d };
+      } else if (!blocked || d < blocked.d) {
+        blocked = { p: c, d, reason };
       }
     }
   }
 
-  if (best) return { ...best, stacked: true };
-  const grid = {
+  if (ok) return { ...ok.p, fit: "ok" };
+  if (blocked) return { ...blocked.p, fit: "blocked", reason: blocked.reason };
+  return {
     x: Math.round(raw.x / GRID) * GRID,
     y: Math.round(raw.y / GRID) * GRID,
+    fit: "free",
   };
-  return { ...grid, stacked: false };
 }
 
 /** Lay parts out as one centred column, top to bottom, resting on `bottomY`. */

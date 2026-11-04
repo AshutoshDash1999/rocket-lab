@@ -107,7 +107,8 @@ export const PARTS = {
     fuelMass: 0,
     thrust: 0,
     role: "Splits the rocket into stages so empty parts can be dropped.",
-    useWhen: "Between a spent lower stage and the stage above it.",
+    useWhen:
+      "Right under an upper stage's engine. In flight, Space drops everything below it.",
   },
   fins: {
     id: "fins",
@@ -140,7 +141,7 @@ export const PARTS = {
     thrust: 0,
     role: "Slows a falling capsule so it touches down gently.",
     useWhen:
-      "On top of or right below the capsule, for any flight that comes home.",
+      "On top of the capsule, where it packs into the nose. Pull it by hand on the way down, once you've slowed enough that it won't tear.",
   },
   "nose-cone": {
     id: "nose-cone",
@@ -215,7 +216,7 @@ export const PARTS = {
     thrust: 0,
     role: "A hollow adapter that joins stages and protects the engine of the stage above.",
     useWhen:
-      "Between stages, often paired with a decoupler, to fit an upper engine inside.",
+      "Right under a decoupler, between stages. It drops away with the spent lower stage.",
   },
 } as const satisfies Record<PartId, PartDef>;
 

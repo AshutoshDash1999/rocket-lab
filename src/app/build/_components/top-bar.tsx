@@ -2,21 +2,23 @@ import Link from "next/link";
 import { PartShape } from "@/components/common/part-shape";
 import { RocketStats } from "@/components/common/rocket-stats";
 import { toonButton } from "@/components/common/toon-button";
+import type { StackInfo } from "@/lib/rocket/stack";
 import type { RocketStats as Stats } from "@/lib/rocket/stats";
 
 export function TopBar({
   stats,
-  partCount,
+  info,
   onLaunch,
   onClear,
 }: {
   stats: Stats;
-  partCount: number;
+  info: StackInfo;
   /** Hand the rocket over to the launch pad (runs before navigating). */
   onLaunch: () => void;
   onClear: () => void;
 }) {
-  const empty = partCount === 0;
+  const empty = info.chain.length === 0;
+  const nothingPlaced = empty && info.loose.length === 0;
   return (
     <header className="paper relative z-10 flex flex-wrap items-center gap-x-8 gap-y-2 border-b-[3px] border-pen px-4 py-3 md:px-6">
       <div className="flex items-center gap-3">
@@ -34,14 +36,14 @@ export function TopBar({
       </div>
 
       <div className="order-last w-full min-w-0 lg:order-none lg:w-auto lg:flex-1">
-        <RocketStats stats={stats} partCount={partCount} />
+        <RocketStats stats={stats} info={info} />
       </div>
 
       <div className="ml-auto flex items-center gap-2 sm:gap-3">
         <button
           type="button"
           onClick={onClear}
-          disabled={empty}
+          disabled={nothingPlaced}
           className={`${toonButton} bg-paper-light`}
         >
           Clear

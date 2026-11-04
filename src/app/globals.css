@@ -351,6 +351,44 @@ body {
   animation: rl-chute-collapse 0.9s ease-in 0.2s forwards;
 }
 
+/* Deploy: the bagged canopy shoots out of its part on its lines. */
+@keyframes rl-chute-eject {
+  from {
+    transform: translateY(45%) scale(0.15);
+    opacity: 0.4;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+.rl-chute-eject {
+  animation: rl-chute-eject 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+}
+
+/* Torn: the canopy rips loose and flutters away. */
+@keyframes rl-chute-tear {
+  to {
+    transform: translateX(-10%) translateY(-160%) rotate(-55deg)
+      scale(0.6, 0.25);
+    opacity: 0;
+  }
+}
+.rl-chute-tear {
+  animation: rl-chute-tear 1.1s ease-out forwards;
+}
+
+/* Staging: the spent stage drops away and fades. */
+@keyframes rl-stage-drop {
+  to {
+    transform: translate(18px, 520px) rotate(14deg);
+    opacity: 0;
+  }
+}
+.rl-stage-drop {
+  animation: rl-stage-drop 1.6s cubic-bezier(0.45, 0, 0.8, 0.5) forwards;
+}
+
 /* Crash: shake, burst, debris, smoke. */
 @keyframes rl-shake {
   0%,
@@ -520,7 +558,10 @@ body {
   }
   .rl-pop,
   .rl-burst,
-  .rl-chute-collapse {
+  .rl-chute-collapse,
+  .rl-chute-eject,
+  .rl-chute-tear,
+  .rl-stage-drop {
     animation-duration: 1ms;
   }
 }

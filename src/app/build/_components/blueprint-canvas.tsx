@@ -1,11 +1,17 @@
 "use client";
 
-import { PartShape } from "@/components/common/part-shape";
+import {
+  overlapsBelow,
+  PartShape,
+  partSize,
+} from "@/components/common/part-shape";
 import {
   type Box,
   type Camera,
   GRID,
   type PlacedPart,
+  SEAM,
+  type Snap,
 } from "@/lib/rocket/canvas";
 import { PARTS } from "@/lib/rocket/parts";
 import { ZoomControls } from "./zoom-controls";
@@ -19,6 +25,8 @@ export function BlueprintCanvas({
   camera,
   panning,
   parts,
+  loose,
+  badJoints,
   draggingUid,
   landing,
   onPressCanvas,
@@ -35,10 +43,14 @@ export function BlueprintCanvas({
   /** Space held or a pan in progress: show the hand cursor everywhere. */
   panning: "ready" | "active" | null;
   parts: readonly PlacedPart[];
+  /** Parts not joined to the rocket: drawn faded, left behind at launch. */
+  loose: readonly PlacedPart[];
+  /** Touching pairs that don't fit, as [upper uid, lower uid]. */
+  badJoints: readonly [string, string][];
   /** Part currently being dragged (drawn faded in place). */
   draggingUid: string | null;
   /** Where the dragged part would land (world units), shown as a dashed outline. */
-  landing: (Box & { stacked: boolean }) | null;
+  landing: (Box & Snap) | null;
   /** Pointer down on empty canvas: starts a pan. */
   onPressCanvas: (e: React.PointerEvent<HTMLElement>) => void;
   onPressPart: (e: React.PointerEvent<HTMLElement>, part: PlacedPart) => void;
@@ -52,6 +64,9 @@ export function BlueprintCanvas({
   const { x, y, zoom } = camera;
   const major = 100 * zoom;
   const minor = 20 * zoom;
+  // A lone part on an empty canvas isn't "loose": it's the start of a rocket.
+  const looseUids = new Set(parts.length > 1 ? loose.map((p) => p.uid) : []);
+  const byUid = new Map(parts.map((p) => [p.uid, p]));
 
   return (
     <section
@@ -92,13 +107,14 @@ export function BlueprintCanvas({
         <div>
           {parts.map((item) => {
             const part = PARTS[item.partId];
+            const isLoose = looseUids.has(item.uid);
             return (
               <div
                 key={item.uid}
                 tabIndex={0}
                 role="group"
                 aria-roledescription="movable part"
-                aria-label={`${part.name}. Arrow keys move it, Delete removes it.`}
+                aria-label={`${part.name}${isLoose ? ", not attached" : ""}. Arrow keys move it, Delete removes it.`}
                 onPointerDown={(e) => {
                   e.stopPropagation();
                   onPressPart(e, item);
@@ -121,12 +137,21 @@ export function BlueprintCanvas({
                 }}
                 style={{ left: item.x, top: item.y }}
                 className={`group absolute cursor-grab touch-none rounded-[4px] outline-offset-4 hover:z-20 focus-visible:z-20 focus-visible:outline-toon-yellow ${
-                  draggingUid === item.uid ? "opacity-30" : ""
+                  overlapsBelow(item.partId) ? "z-[1]" : ""
+                } ${
+                  draggingUid === item.uid
+                    ? "opacity-30"
+                    : isLoose
+                      ? "opacity-55"
+                      : ""
                 }`}
               >
                 <PartShape partId={item.partId} />
                 <span className="pointer-events-none absolute bottom-full left-1/2 mb-2 hidden -translate-x-1/2 -rotate-1 rounded-[6px] border-2 border-pen bg-paper-light px-2 py-0.5 font-hand text-xl leading-none font-bold whitespace-nowrap text-pen shadow-[2px_2px_0_var(--pen)] group-hover:block group-focus-visible:block">
                   {part.name}
+                  {isLoose && (
+                    <span className="ml-1.5 text-toon-red">· not attached</span>
+                  )}
                 </span>
                 <button
                   type="button"
@@ -143,11 +168,35 @@ export function BlueprintCanvas({
           })}
         </div>
 
+        {badJoints.map(([upperUid, lowerUid]) => {
+          const lower = byUid.get(lowerUid);
+          if (!lower) return null;
+          const { w } = partSize(lower.partId);
+          return (
+            <div
+              key={`${upperUid}-${lowerUid}`}
+              aria-hidden
+              title="These parts don't fit together"
+              className="pointer-events-none absolute rounded-full bg-toon-red"
+              style={{
+                left: lower.x + 14,
+                top: lower.y + SEAM / 2 - 3,
+                width: w - 28,
+                height: 6,
+              }}
+            />
+          );
+        })}
+
         {landing && (
           <div
             aria-hidden
             className={`pointer-events-none absolute rounded-[4px] border-[3px] border-dashed ${
-              landing.stacked ? "border-toon-yellow" : "border-white/70"
+              landing.fit === "ok"
+                ? "border-toon-yellow"
+                : landing.fit === "blocked"
+                  ? "border-toon-red bg-toon-red/15"
+                  : "border-white/70"
             }`}
             style={{
               left: landing.x,
@@ -155,7 +204,13 @@ export function BlueprintCanvas({
               width: landing.w,
               height: landing.h,
             }}
-          />
+          >
+            {landing.fit === "blocked" && landing.reason && (
+              <span className="absolute top-1/2 left-full ml-3 w-max max-w-56 -translate-y-1/2 -rotate-1 rounded-[6px] border-2 border-pen bg-[#ffb3a8] px-2 py-0.5 font-hand text-xl leading-tight font-bold text-pen shadow-[2px_2px_0_var(--pen)]">
+                ✕ {landing.reason}
+              </span>
+            )}
+          </div>
         )}
       </div>
 
