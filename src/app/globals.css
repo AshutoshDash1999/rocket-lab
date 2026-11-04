@@ -130,58 +130,6 @@ body {
   /* background-position/size follow the camera: set inline by BlueprintCanvas */
 }
 
-@keyframes rl-liftoff {
-  0% {
-    transform: translate(0, 0);
-  }
-  4% {
-    transform: translate(-2px, 1px);
-  }
-  8% {
-    transform: translate(2px, -1px);
-  }
-  12% {
-    transform: translate(-2px, 0);
-  }
-  16% {
-    transform: translate(0, 0);
-    animation-timing-function: cubic-bezier(0.55, 0, 0.9, 0.55);
-  }
-  100% {
-    transform: translateY(-150vh);
-  }
-}
-
-@keyframes rl-return {
-  from {
-    transform: translateY(-48px);
-    opacity: 0;
-  }
-  to {
-    transform: none;
-    opacity: 1;
-  }
-}
-
-@keyframes rl-fizzle {
-  0%,
-  100% {
-    transform: translateX(0);
-  }
-  20% {
-    transform: translateX(-7px) rotate(-1.2deg);
-  }
-  40% {
-    transform: translateX(6px) rotate(1deg);
-  }
-  60% {
-    transform: translateX(-4px) rotate(-0.6deg);
-  }
-  80% {
-    transform: translateX(3px);
-  }
-}
-
 @keyframes rl-flicker {
   from {
     transform: scaleY(1);
@@ -191,27 +139,388 @@ body {
   }
 }
 
-.launch-fly {
-  animation: rl-liftoff 2.8s linear forwards;
-}
-.launch-return {
-  animation: rl-return 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
-}
-.launch-fizzle {
-  animation: rl-fizzle 0.5s ease-in-out;
-}
 .flame svg {
   transform-origin: 50% 0;
   animation: rl-flicker 0.12s steps(2) infinite alternate;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .launch-fly,
-  .launch-return,
-  .launch-fizzle {
-    animation-duration: 1ms;
+/* ---------- Launch pad: scenery ---------- */
+
+.rl-stars {
+  background-image:
+    radial-gradient(2px 2px at 20px 30px, #fffdf7 99%, transparent),
+    radial-gradient(1.5px 1.5px at 90px 120px, #fffdf7 99%, transparent),
+    radial-gradient(2.5px 2.5px at 160px 60px, #ffd23f 99%, transparent),
+    radial-gradient(1.5px 1.5px at 210px 180px, #fffdf7 99%, transparent),
+    radial-gradient(2px 2px at 60px 200px, #fffdf7 99%, transparent),
+    radial-gradient(1.5px 1.5px at 140px 230px, #fffdf7 99%, transparent);
+  background-size: 240px 240px;
+}
+
+.rl-hills {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='480' height='96'%3E%3Cpath d='M-4 96 L-4 70 C40 30 90 30 140 62 C190 20 250 16 300 58 C350 34 420 30 484 70 L484 96 Z' fill='%2360b874' stroke='%231b1b29' stroke-width='3' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: repeat-x;
+  background-position-y: bottom;
+}
+
+.rl-ground {
+  background-color: var(--toon-green);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='60'%3E%3Cpath d='M14 22 l4 -9 l3 9 M70 40 l4 -9 l3 9 M98 16 l3 -7 l3 7' fill='none' stroke='%231b1b29' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+/* ---------- Launch pad: atmosphere layers ---------- */
+
+/* Airliner crossing the troposphere, left to right. */
+@keyframes rl-plane {
+  from {
+    transform: translate(-120px, -50%);
   }
-  .flame svg {
+  to {
+    transform: translate(calc(100vw + 20px), -50%);
+  }
+}
+.rl-plane {
+  animation: rl-plane 16s linear infinite;
+}
+
+/* Weather balloon bobbing in the stratosphere. */
+@keyframes rl-bob {
+  50% {
+    transform: translateY(-10px) rotate(3deg);
+  }
+}
+.rl-bob {
+  animation: rl-bob 3.2s ease-in-out infinite;
+}
+
+/* Shooting stars burning up in the mesosphere. */
+@keyframes rl-meteor {
+  0% {
+    transform: translate(0, 0) rotate(28deg) scaleX(0.2);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  30%,
+  100% {
+    transform: translate(220px, 120px) rotate(28deg) scaleX(1);
+    opacity: 0;
+  }
+}
+.rl-meteor {
+  transform-origin: right center;
+  animation: rl-meteor 4.4s ease-in infinite both;
+}
+
+/* Aurora curtains sway in the thermosphere. */
+@keyframes rl-aurora {
+  50% {
+    transform: translateX(-3%) skewX(-6deg);
+    opacity: 0.75;
+  }
+}
+.rl-aurora {
+  animation: rl-aurora 7s ease-in-out infinite;
+}
+
+/* "Entering the …" card: pop in, hold, fade away. */
+@keyframes rl-layer-toast {
+  0% {
+    transform: scale(0.5);
+    opacity: 0;
+  }
+  8% {
+    transform: scale(1.06);
+    opacity: 1;
+  }
+  14%,
+  80% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-12px);
+    opacity: 0;
+  }
+}
+.rl-layer-toast {
+  animation: rl-layer-toast 3.2s ease-out forwards;
+}
+
+/* ---------- Launch pad: motion ---------- */
+
+/* Countdown digits, stickers, outcome card: spring pop-in. */
+@keyframes rl-pop {
+  0% {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.12);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+.rl-pop {
+  animation: rl-pop 0.38s cubic-bezier(0.2, 0.9, 0.3, 1.3) both;
+}
+
+/* LAUNCH button breathes while waiting on the pad. */
+@keyframes rl-ready {
+  50% {
+    transform: scale(1.04);
+  }
+}
+.rl-ready {
+  animation: rl-ready 1.4s ease-in-out infinite;
+}
+
+/* Engines straining against the clamps or a too-heavy load. */
+@keyframes rl-strain {
+  0% {
+    transform: translate(-1.5px, 0.5px);
+  }
+  100% {
+    transform: translate(1.5px, -0.5px);
+  }
+}
+.rl-strain {
+  animation: rl-strain 0.07s linear infinite alternate;
+}
+
+/* Exhaust cloud at the pad, looping. */
+@keyframes rl-billow {
+  0% {
+    transform: translate(0, 0) scale(0.4);
+    opacity: 0.95;
+  }
+  100% {
+    transform: translate(var(--dx), -18px) scale(1.5);
+    opacity: 0;
+  }
+}
+.rl-billow {
+  animation: rl-billow 1.3s ease-out infinite both;
+}
+
+/* Touchdown: squash, overshoot, settle. */
+@keyframes rl-squash {
+  0% {
+    transform: none;
+  }
+  30% {
+    transform: scale(1.08, 0.86);
+  }
+  60% {
+    transform: scale(0.97, 1.04);
+  }
+  100% {
+    transform: none;
+  }
+}
+.rl-squash {
+  animation: rl-squash 0.5s ease-out;
+}
+
+@keyframes rl-dust {
+  0% {
+    transform: translate(0, 0) scale(0.5);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(var(--dx), -10px) scale(1.4);
+    opacity: 0;
+  }
+}
+.rl-dust {
+  animation: rl-dust 0.9s ease-out both;
+}
+
+/* Parachute sags over once the rocket is down. */
+@keyframes rl-chute-collapse {
+  to {
+    transform: translateX(-20%) translateY(30%) rotate(40deg) scaleY(0.35);
+    opacity: 0.85;
+  }
+}
+.rl-chute-collapse {
+  animation: rl-chute-collapse 0.9s ease-in 0.2s forwards;
+}
+
+/* Crash: shake, burst, debris, smoke. */
+@keyframes rl-shake {
+  0%,
+  100% {
+    transform: none;
+  }
+  15% {
+    transform: translate(-10px, 6px);
+  }
+  30% {
+    transform: translate(9px, -7px);
+  }
+  45% {
+    transform: translate(-7px, -4px);
+  }
+  60% {
+    transform: translate(6px, 5px);
+  }
+  80% {
+    transform: translate(-3px, 2px);
+  }
+}
+.rl-shake {
+  animation: rl-shake 0.45s ease-out;
+}
+
+@keyframes rl-burst {
+  0% {
+    transform: scale(0) rotate(-20deg);
+  }
+  55% {
+    transform: scale(1.15) rotate(4deg);
+  }
+  100% {
+    transform: scale(1) rotate(0);
+  }
+}
+.rl-burst {
+  transform-origin: 50% 75%;
+  animation: rl-burst 0.4s cubic-bezier(0.2, 0.9, 0.3, 1.3) both;
+}
+
+@keyframes rl-debris {
+  0% {
+    transform: none;
+    opacity: 1;
+  }
+  45% {
+    transform: translate(calc(var(--dx) * 0.6), var(--dy))
+      rotate(calc(var(--rot) * 0.5));
+    opacity: 1;
+  }
+  100% {
+    transform: translate(var(--dx), calc(var(--dy) * -0.15 + 120px))
+      rotate(var(--rot));
+    opacity: 0;
+  }
+}
+.rl-debris {
+  animation: rl-debris 1.3s cubic-bezier(0.25, 0.6, 0.5, 1) forwards;
+}
+
+@keyframes rl-smoke {
+  0% {
+    transform: translate(0, 0) scale(0.3);
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.95;
+  }
+  100% {
+    transform: translate(var(--dx), -140px) scale(1.8);
+    opacity: 0;
+  }
+}
+.rl-smoke {
+  animation: rl-smoke 1.8s ease-out both;
+}
+
+/* Nearly empty fuel tank wobbles for attention. */
+@keyframes rl-wobble {
+  0%,
+  100% {
+    transform: rotate(0);
+  }
+  25% {
+    transform: rotate(-4deg);
+  }
+  75% {
+    transform: rotate(4deg);
+  }
+}
+.rl-wobble {
+  animation: rl-wobble 0.6s ease-in-out infinite;
+}
+
+/* ---------- Toon range slider (engine power) ---------- */
+
+.toon-range {
+  appearance: none;
+  height: 28px;
+  background: transparent;
+  cursor: pointer;
+}
+.toon-range::-webkit-slider-runnable-track {
+  height: 12px;
+  border: 2.5px solid var(--pen);
+  border-radius: 999px;
+  background: var(--paper-light);
+}
+.toon-range::-moz-range-track {
+  height: 12px;
+  border: 2.5px solid var(--pen);
+  border-radius: 999px;
+  background: var(--paper-light);
+}
+.toon-range::-moz-range-progress {
+  height: 12px;
+  border-radius: 999px;
+  background: var(--toon-red);
+}
+.toon-range::-webkit-slider-thumb {
+  appearance: none;
+  margin-top: -9.5px;
+  width: 26px;
+  height: 26px;
+  border: 3px solid var(--pen);
+  border-radius: 999px;
+  background: var(--toon-yellow);
+  box-shadow: 2px 2px 0 var(--pen);
+}
+.toon-range::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border: 3px solid var(--pen);
+  border-radius: 999px;
+  background: var(--toon-yellow);
+  box-shadow: 2px 2px 0 var(--pen);
+}
+.toon-range:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flame svg,
+  .rl-ready,
+  .rl-strain,
+  .rl-wobble,
+  .rl-shake,
+  .rl-squash,
+  .rl-plane,
+  .rl-bob,
+  .rl-aurora {
     animation: none;
+  }
+  .rl-meteor {
+    visibility: hidden;
+  }
+  /* No flying debris or drifting smoke: the burst and banners still say what happened. */
+  .rl-debris,
+  .rl-billow,
+  .rl-dust,
+  .rl-smoke {
+    animation: none;
+    visibility: hidden;
+  }
+  .rl-pop,
+  .rl-burst,
+  .rl-chute-collapse {
+    animation-duration: 1ms;
   }
 }
