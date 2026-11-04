@@ -3,7 +3,13 @@
 import Link from "next/link";
 import { type ReactNode, useEffect, useState } from "react";
 import { toonButton } from "@/components/common/toon-button";
-import type { FlightConfig, FlightState } from "@/lib/rocket/flight";
+import {
+  type CrashTip,
+  crashAdvice,
+  type FlightConfig,
+  type FlightState,
+  totalThrust,
+} from "@/lib/rocket/flight";
 import { useFlightStore } from "@/lib/rocket/store/flight-store";
 import { fmtAlt, fmtClock, fmtDeg, fmtInt, fmtOne } from "./format";
 import { LABEL } from "./panel";
@@ -34,7 +40,11 @@ function outcomeFor(cfg: FlightConfig, s: FlightState): Outcome | null {
           }
         : {
             title: "Crashed!",
-            note: `Hit the ground at ${fmtInt(s.impactSpeed)} m/s. Add a parachute or legs, or slow down with the engine.`,
+            note: s.chuteTear
+              ? s.chuteTear.cause === "burn"
+                ? `Hit the ground at ${fmtInt(s.impactSpeed)} m/s. The engine burned through the parachute: throttle down to 0% before you pull it.`
+                : `Hit the ground at ${fmtInt(s.impactSpeed)} m/s. Your parachute tore opening at ${fmtInt(s.chuteTear.speed)} m/s. Wait until you've slowed down.`
+              : `Hit the ground at ${fmtInt(s.impactSpeed)} m/s. Add a parachute or legs, or slow down with the engine.`,
             tone: "bg-[#ffb3a8]",
             delayed: true,
           };
@@ -45,7 +55,7 @@ function outcomeFor(cfg: FlightConfig, s: FlightState): Outcome | null {
         tone: "bg-toon-yellow",
       };
     case "grounded":
-      return cfg.thrust === 0
+      return totalThrust(cfg) === 0
         ? {
             title: "No engine, no liftoff",
             note: "Add an engine to the rocket in the builder.",
@@ -88,6 +98,7 @@ export function OutcomeBanner() {
   const reset = useFlightStore((st) => st.reset);
   const outcome = outcomeFor(cfg, state);
   if (!outcome) return null;
+  const tips: CrashTip[] = crashAdvice(cfg, state);
 
   const alt = fmtAlt(state.maxAlt);
   const stats = [
@@ -114,6 +125,21 @@ export function OutcomeBanner() {
           <p className="mt-3 font-hand text-2xl leading-tight">
             {outcome.note}
           </p>
+          {tips.length > 0 && (
+            <div className="mt-3 rounded-[8px] border-[2.5px] border-pen bg-paper-light p-3 text-left">
+              <p className={LABEL}>What would help</p>
+              <ul className="mt-1 space-y-1">
+                {tips.map((tip) => (
+                  <li key={tip.missing} className="leading-tight">
+                    <span className="font-sans text-sm font-extrabold">
+                      {tip.missing}.
+                    </span>{" "}
+                    <span className="font-hand text-xl">{tip.fix}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           <dl className="mt-4 grid grid-cols-3 gap-2">
             {stats.map((st) => (
               <div key={st.label}>

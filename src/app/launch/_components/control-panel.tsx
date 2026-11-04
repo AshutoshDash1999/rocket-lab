@@ -1,11 +1,18 @@
 "use client";
 
 import { toonButton } from "@/components/common/toon-button";
-import { isBurning, TERMINAL, thrustNow } from "@/lib/rocket/flight";
+import {
+  activeStage,
+  isBurning,
+  stagesLeft,
+  TERMINAL,
+  thrustNow,
+} from "@/lib/rocket/flight";
 import { useFlightStore } from "@/lib/rocket/store/flight-store";
 import { fmtInt } from "./format";
 import { PowerDial } from "./gauges";
 import { CARD, LABEL } from "./panel";
+import { ParachuteControl } from "./parachute-control";
 
 /** Press-and-hold steering button. */
 function SteerButton({ dir, disabled }: { dir: -1 | 1; disabled: boolean }) {
@@ -52,15 +59,15 @@ const Divider = () => (
   />
 );
 
-/** The launch console: launch, engine, power, steering, reset. */
+/** The launch console: launch, stage, power, steering, reset. */
 export function ControlPanel({ className = "" }: { className?: string }) {
   const cfg = useFlightStore((st) => st.cfg);
   const s = useFlightStore((st) => st.state);
-  const { launch, toggleEngine, setThrottle, reset } =
-    useFlightStore.getState();
+  const { launch, stage, setThrottle, reset } = useFlightStore.getState();
 
   const over = TERMINAL.has(s.phase);
-  const burning = isBurning(s);
+  const burning = isBurning(cfg, s);
+  const canStage = s.phase === "flying" && stagesLeft(cfg, s) > 1;
   const pct = Math.round(s.throttle * 100);
   const launchLabel =
     s.phase === "pad"
@@ -88,28 +95,21 @@ export function ControlPanel({ className = "" }: { className?: string }) {
         {launchLabel}
       </button>
 
-      <Divider />
-
-      <button
-        type="button"
-        onClick={toggleEngine}
-        disabled={over || s.fuel <= 0}
-        aria-pressed={s.engineOn}
-        aria-keyshortcuts="E"
-        className={`${toonButton} h-14 whitespace-nowrap ${s.engineOn ? "bg-toon-green" : "bg-paper-light"}`}
-      >
-        <span
-          aria-hidden
-          className={`size-4 rounded-full border-[2.5px] border-pen ${
-            burning
-              ? "bg-toon-yellow"
-              : s.engineOn
-                ? "bg-toon-green"
-                : "bg-[#a3a9bd]"
-          }`}
-        />
-        Engine {s.engineOn ? "ON" : "OFF"}
-      </button>
+      {cfg.stages.length > 1 && (
+        <button
+          type="button"
+          onClick={stage}
+          disabled={!canStage}
+          aria-keyshortcuts="Space G"
+          title="Drop the spent stage (Space or G)"
+          className={`${toonButton} h-14 flex-col gap-0 whitespace-nowrap bg-toon-yellow leading-none`}
+        >
+          <span>STAGE</span>
+          <span className="font-sans text-xs font-bold text-pen/70">
+            {s.stage + 1} of {cfg.stages.length}
+          </span>
+        </button>
+      )}
 
       <Divider />
 
@@ -137,7 +137,8 @@ export function ControlPanel({ className = "" }: { className?: string }) {
             className="toon-range w-full"
           />
           <p className="font-sans text-xs font-bold text-pen/60 tabular-nums">
-            {fmtInt(thrustNow(cfg, s))} / {fmtInt(cfg.thrust)} kN
+            {fmtInt(thrustNow(cfg, s))} / {fmtInt(activeStage(cfg, s).thrust)}{" "}
+            kN
           </p>
         </div>
       </div>
@@ -154,6 +155,8 @@ export function ControlPanel({ className = "" }: { className?: string }) {
         </div>
         <SteerButton dir={1} disabled={over || !s.airborne} />
       </div>
+
+      <ParachuteControl />
 
       <Divider />
 

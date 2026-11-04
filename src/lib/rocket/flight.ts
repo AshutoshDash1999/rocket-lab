@@ -1,15 +1,16 @@
 /**
  * 2D flight model: one rigid body under thrust, gravity, drag and ground
- * contact, integrated at a fixed timestep. Pure functions, no React.
- * All tuning values live at the top — adjust through playtesting.
+ * contact, integrated at a fixed timestep. The rocket is a stack of stages;
+ * only the lowest one still attached burns, and staging drops it.
+ * Pure functions, no React. All tuning values live at the top.
  */
-import type { PartId } from "./parts";
-import { computeRocketStats, G0 } from "./stats";
+import { DRAWING_PX_PER_M, type PlacedPart, SEAM, type Size } from "./canvas";
+import { PARTS, type PartId } from "./parts";
+import { analyzeStack, type Stage } from "./stack";
+import { G0, ISP } from "./stats";
 
 /** Fixed physics timestep, s. */
 export const DT = 1 / 60;
-/** Engine efficiency (specific impulse), s. Higher = more push per kg of fuel. */
-export const ISP = 280;
 /** Kármán line: where space begins, m. */
 export const SPACE_ALT = 100_000;
 /** Seconds counted down before the clamps let go. */
@@ -22,19 +23,54 @@ const SEA_LEVEL_DENSITY = 1.225;
 const SCALE_HEIGHT = 8500;
 /** Drag area (Cd·A, m²) of the bare rocket. */
 const BODY_CDA = 3.5;
-/** Extra drag area of one fully open parachute, m². */
+/** Without a nose cone or capsule the blunt top drags this much more. */
+const BLUNT_DRAG_MULT = 1.8;
+
+// Missing parts -----------------------------------------------------------
+/** Dynamic pressure at which a finless rocket wobbles hardest, Pa. */
+const WOBBLE_Q = 20_000;
+/** Least wobble while the engine burns, so it shows right off the pad. */
+const WOBBLE_BURN_FLOOR = 0.3;
+/** Peak wobble rate of a finless rocket, rad/s. */
+const WOBBLE_RATE = (14 * Math.PI) / 180;
+/** Without fins a lean grows by this fraction of itself per second at full q. */
+const UNSTABLE_K = 0.5;
+/** A blunt top makes the wobble this much worse. */
+const BLUNT_WOBBLE_MULT = 1.3;
+/** Without a capsule to steer, turning is this much slower. */
+const NO_CAPSULE_TURN = 0.5;
+/** A wobble past this counts as a problem worth mentioning. */
+const BAD_WOBBLE = (20 * Math.PI) / 180;
+
+// Parachutes -------------------------------------------------------------
+/** Drag area (Cd·A, m²) of one fully open parachute. */
 const CHUTE_CDA = 1200;
-/** Parachutes open automatically below this altitude while falling, m. */
-const CHUTE_DEPLOY_ALT = 3000;
-/** Seconds for a parachute to open fully (opening gradually spares the rocket a jolt). */
-const CHUTE_OPEN_TIME = 2.5;
+/** Drag coefficient of a round canopy; with CdA it gives the canopy's size. */
+const CHUTE_CD = 0.8;
+/** Canopy diameter, m. */
+const CHUTE_DIAMETER = Math.sqrt((4 * CHUTE_CDA) / CHUTE_CD / Math.PI);
+/** Canopy fill constant: a canopy fills in about this many diameters of travel. */
+const CHUTE_FILL_N = 8;
+/** Clamp on fill time, s, so it never snaps open instantly or takes forever. */
+const CHUTE_FILL_MIN = 0.4;
+const CHUTE_FILL_MAX = 4;
+/** A reefed canopy first opens to this fraction of its drag area… */
+export const REEF_FRACTION = 0.1;
+/** …and holds there this long, s, before opening fully. */
+const REEF_TIME = 3;
+/** Opening shock: peak load while a canopy fills, as a multiple of steady drag. */
+const CHUTE_CX = 1.6;
+/** Load one parachute can take before it tears, N. ≈20 kPa while reefed. */
+const CHUTE_MAX_LOAD = 3.8e6;
+/** Below this air density (~35 km) a canopy can't inflate, kg/m³. */
+const CHUTE_MIN_DENSITY = 0.02;
 
 const rad = (deg: number) => (deg * Math.PI) / 180;
 /** Steering rate without and with fins, rad/s. */
 const TURN_RATE = rad(30);
 const FIN_TURN_RATE = rad(50);
 /** Fastest survivable touchdown, m/s. Legs absorb more. */
-const SAFE_LANDING = 8;
+export const SAFE_LANDING = 8;
 const LEGS_SAFE_LANDING = 12;
 /** Landing tilted further than this tips the rocket over. */
 const MAX_LANDING_TILT = rad(25);
@@ -54,16 +90,22 @@ export type FlightPhase =
 
 export type CrashReason = "speed" | "tilt";
 
+/**
+ * packed: in its bag. armed: deployed in air too thin to fill, waits for
+ * thicker air. reefed: partly open to soften the shock. open: fully open.
+ * torn: ripped by the opening shock or burned by the engine.
+ */
+export type ChuteState = "packed" | "armed" | "reefed" | "open" | "torn";
+
+export interface ChuteTear {
+  cause: "fast" | "burn";
+  /** Speed when it tore, m/s */
+  speed: number;
+}
+
 export interface FlightConfig {
-  /** Mass with empty tanks, kg */
-  dryMass: number;
-  /** Fuel at liftoff, kg */
-  fuelMass: number;
-  /** Combined full-throttle thrust, kN */
-  thrust: number;
-  chutes: number;
-  hasLegs: boolean;
-  hasFins: boolean;
+  /** Bottom stage first. */
+  stages: Stage[];
 }
 
 export interface FlightState {
@@ -83,20 +125,28 @@ export interface FlightState {
   ay: number;
   /** Nose direction, radians from straight up; positive = right */
   heading: number;
-  /** Fuel left, kg */
-  fuel: number;
+  /** Index of the lowest stage still attached. */
+  stage: number;
+  /** Fuel left in each stage, kg */
+  fuel: number[];
   /** Engine power, 0–1 */
   throttle: number;
   engineOn: boolean;
   /** Has left the ground since release */
   airborne: boolean;
-  /** Parachute open fraction, 0 = packed, 1 = fully open */
+  chuteState: ChuteState;
+  /** Canopy fill as a fraction of its full drag area, 0–1 */
   chute: number;
+  /** Time spent fully reefed, s */
+  chuteTimer: number;
+  chuteTear: ChuteTear | null;
   maxAlt: number;
   maxSpeed: number;
   /** Speed at touchdown, m/s */
   impactSpeed: number;
   crashReason: CrashReason | null;
+  /** Largest lean from upright while under power, radians */
+  maxTilt: number;
 }
 
 export const TERMINAL: ReadonlySet<FlightPhase> = new Set([
@@ -106,16 +156,23 @@ export const TERMINAL: ReadonlySet<FlightPhase> = new Set([
   "grounded",
 ]);
 
-export function flightConfig(ids: readonly PartId[]): FlightConfig {
-  const { dryMass, fuelMass, thrust } = computeRocketStats(ids);
-  return {
-    dryMass,
-    fuelMass,
-    thrust,
-    chutes: ids.filter((id) => id === "parachute").length,
-    hasLegs: ids.includes("legs"),
-    hasFins: ids.includes("fins"),
-  };
+const EMPTY_STAGE: Stage = {
+  parts: [],
+  dryMass: 0,
+  fuelMass: 0,
+  thrust: 0,
+  chutes: 0,
+  hasLegs: false,
+  hasFins: false,
+  heightPx: 0,
+};
+
+/** Build the flight from parts on the canvas; loose parts are left behind. */
+export function flightConfig(
+  parts: readonly PlacedPart[],
+  sizeOf: (id: PartId) => Size,
+): FlightConfig {
+  return { stages: analyzeStack(parts, sizeOf).stages };
 }
 
 export function initialFlight(cfg: FlightConfig): FlightState {
@@ -130,36 +187,258 @@ export function initialFlight(cfg: FlightConfig): FlightState {
     ax: 0,
     ay: 0,
     heading: 0,
-    fuel: cfg.fuelMass,
+    stage: 0,
+    fuel: cfg.stages.map((st) => st.fuelMass),
     throttle: 1,
     engineOn: false,
     airborne: false,
+    chuteState: "packed",
     chute: 0,
+    chuteTimer: 0,
+    chuteTear: null,
     maxAlt: 0,
     maxSpeed: 0,
     impactSpeed: 0,
     crashReason: null,
+    maxTilt: 0,
   };
 }
 
+// Stage helpers ------------------------------------------------------------
+
+export const activeStage = (cfg: FlightConfig, s: FlightState): Stage =>
+  cfg.stages[s.stage] ?? EMPTY_STAGE;
+
+export const activeFuel = (s: FlightState) => s.fuel[s.stage] ?? 0;
+
+export const stagesLeft = (cfg: FlightConfig, s: FlightState) =>
+  Math.max(0, cfg.stages.length - s.stage);
+
+/** Parts still attached to the rocket, top → bottom. */
+export const attachedParts = (cfg: FlightConfig, s: FlightState) =>
+  cfg.stages
+    .slice(s.stage)
+    .reverse()
+    .flatMap((st) => st.parts);
+
+/** What the stages still attached carry. */
+export function remaining(cfg: FlightConfig, s: FlightState) {
+  const left = cfg.stages.slice(s.stage);
+  return {
+    chutes: left.reduce((n, st) => n + st.chutes, 0),
+    hasLegs: left.some((st) => st.hasLegs),
+    hasFins: left.some((st) => st.hasFins),
+    hasNose: left.some((st) =>
+      st.parts.some(
+        (p) => p.partId === "capsule" || PARTS[p.partId].category === "nose",
+      ),
+    ),
+    hasCapsule: left.some((st) => st.parts.some((p) => p.partId === "capsule")),
+  };
+}
+
+/** Thrust of every stage, kN. */
+export const totalThrust = (cfg: FlightConfig) =>
+  cfg.stages.reduce((n, st) => n + st.thrust, 0);
+
 export const massOf = (cfg: FlightConfig, s: FlightState) =>
-  cfg.dryMass + s.fuel;
+  cfg.stages
+    .slice(s.stage)
+    .reduce((m, st, i) => m + st.dryMass + (s.fuel[s.stage + i] ?? 0), 0);
 
 /** Thrust-to-weight ratio at the given throttle with the fuel left. Above 1 lifts off. */
 export const twrOf = (
   cfg: FlightConfig,
   s: FlightState,
   throttle = s.throttle,
-) => (cfg.thrust * 1000 * throttle) / (massOf(cfg, s) * G0);
+) => {
+  const mass = massOf(cfg, s);
+  return mass > 0
+    ? (activeStage(cfg, s).thrust * 1000 * throttle) / (mass * G0)
+    : 0;
+};
 
-export const isBurning = (s: FlightState) =>
-  s.engineOn && s.fuel > 0 && s.throttle > 0;
+export const isBurning = (cfg: FlightConfig, s: FlightState) =>
+  s.engineOn &&
+  activeFuel(s) > 0 &&
+  s.throttle > 0 &&
+  activeStage(cfg, s).thrust > 0;
 
 export const thrustNow = (cfg: FlightConfig, s: FlightState) =>
-  isBurning(s) ? cfg.thrust * s.throttle : 0;
+  isBurning(cfg, s) ? activeStage(cfg, s).thrust * s.throttle : 0;
+
+/** Can any stage still attached produce thrust? */
+const canStillThrust = (cfg: FlightConfig, s: FlightState) =>
+  cfg.stages.some(
+    (st, i) => i >= s.stage && st.thrust > 0 && (s.fuel[i] ?? 0) > 0,
+  );
 
 /** Wrap an angle to (−π, π]. */
 export const wrapAngle = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
+
+const densityAt = (alt: number) =>
+  SEA_LEVEL_DENSITY * Math.exp(-Math.max(0, alt) / SCALE_HEIGHT);
+
+/** Dynamic pressure ½ρv², Pa. */
+const dynamicPressure = (s: FlightState) =>
+  0.5 * densityAt(s.alt) * (s.vx * s.vx + s.vy * s.vy);
+
+/** Seconds for a canopy to fill at this speed: faster air fills it faster. */
+const fillTime = (speed: number) =>
+  Math.min(
+    CHUTE_FILL_MAX,
+    Math.max(
+      CHUTE_FILL_MIN,
+      (CHUTE_FILL_N * CHUTE_DIAMETER) / Math.max(1, speed),
+    ),
+  );
+
+/** Peak load on one canopy if it started opening (reefed) right now, N. */
+const reefedShock = (s: FlightState) =>
+  CHUTE_CX * dynamicPressure(s) * REEF_FRACTION * CHUTE_CDA;
+
+/** Fastest speed a reefed canopy survives opening at this altitude, m/s. */
+const safeChuteSpeed = (alt: number) =>
+  Math.sqrt(
+    (2 * CHUTE_MAX_LOAD) /
+      (CHUTE_CX * REEF_FRACTION * CHUTE_CDA * densityAt(alt)),
+  );
+
+// Player actions --------------------------------------------------------------
+
+/** Drop the spent bottom stage. The next engine lights straight away. */
+export function separate(cfg: FlightConfig, prev: FlightState): FlightState {
+  if (prev.phase !== "flying" || prev.stage >= cfg.stages.length - 1)
+    return prev;
+  const dropped = cfg.stages[prev.stage];
+  const s = { ...prev, stage: prev.stage + 1 };
+  // The rocket's base is now the next stage's bottom: lift alt so it stays put.
+  s.alt += (dropped.heightPx - SEAM) / DRAWING_PX_PER_M;
+  const next = activeStage(cfg, s);
+  s.engineOn = next.thrust > 0 && activeFuel(s) > 0;
+  if (s.engineOn && s.throttle === 0) s.throttle = 1;
+  // Parachutes on the dropped stage fall away with it.
+  if (remaining(cfg, s).chutes === 0) {
+    s.chuteState = "packed";
+    s.chute = 0;
+    s.chuteTear = null;
+  }
+  return s;
+}
+
+/** Pull the parachute. Physics decides whether it opens, waits or tears. */
+export function deployChute(cfg: FlightConfig, prev: FlightState): FlightState {
+  if (
+    prev.phase !== "flying" ||
+    !prev.airborne ||
+    prev.chuteState !== "packed" ||
+    remaining(cfg, prev).chutes === 0
+  )
+    return prev;
+  const speed = Math.hypot(prev.vx, prev.vy);
+  if (isBurning(cfg, prev)) {
+    return {
+      ...prev,
+      chuteState: "torn",
+      chuteTear: { cause: "burn", speed },
+    };
+  }
+  if (densityAt(prev.alt) < CHUTE_MIN_DENSITY) {
+    return { ...prev, chuteState: "armed", chute: 0, chuteTimer: 0 };
+  }
+  // Line stretch: the snatch as the canopy catches air sets its peak load,
+  // so the speed at the moment you pull decides whether it survives.
+  if (reefedShock(prev) > CHUTE_MAX_LOAD) {
+    return { ...prev, chuteState: "torn", chuteTear: { cause: "fast", speed } };
+  }
+  return { ...prev, chuteState: "reefed", chute: 0, chuteTimer: 0 };
+}
+
+export type ChuteAdviceKind =
+  | "none"
+  | "waiting"
+  | "burning"
+  | "too-thin"
+  | "too-fast"
+  | "ok"
+  | "armed"
+  | "deployed"
+  | "torn";
+
+export interface ChuteAdvice {
+  kind: ChuteAdviceKind;
+  /** Speed now, m/s */
+  speed: number;
+  /** Fastest speed the canopy survives opening at this height, m/s */
+  safeSpeed: number;
+}
+
+/** Would pulling the parachute right now work? For the console. */
+export function chuteAdvice(cfg: FlightConfig, s: FlightState): ChuteAdvice {
+  const speed = Math.hypot(s.vx, s.vy);
+  const safeSpeed = safeChuteSpeed(s.alt);
+  const kind: ChuteAdviceKind =
+    remaining(cfg, s).chutes === 0
+      ? "none"
+      : s.chuteState === "torn"
+        ? "torn"
+        : s.chuteState === "armed"
+          ? "armed"
+          : s.chuteState !== "packed"
+            ? "deployed"
+            : s.phase !== "flying" || !s.airborne
+              ? "waiting"
+              : isBurning(cfg, s)
+                ? "burning"
+                : densityAt(s.alt) < CHUTE_MIN_DENSITY
+                  ? "too-thin"
+                  : reefedShock(s) > CHUTE_MAX_LOAD
+                    ? "too-fast"
+                    : "ok";
+  return { kind, speed, safeSpeed };
+}
+
+// Integration -------------------------------------------------------------
+
+/** Advance the parachute by `dt`: arm, fill, disreef, or tear. */
+function stepChute(cfg: FlightConfig, s: FlightState, dt: number) {
+  const speed = Math.hypot(s.vx, s.vy);
+  if (s.chuteState === "armed") {
+    // Barometric trigger: open once the air is thick enough and the shock survivable.
+    if (
+      densityAt(s.alt) >= CHUTE_MIN_DENSITY &&
+      reefedShock(s) <= CHUTE_MAX_LOAD
+    ) {
+      s.chuteState = "reefed";
+      s.chute = 0;
+      s.chuteTimer = 0;
+    }
+    return;
+  }
+  if (s.chuteState !== "reefed" && s.chuteState !== "open") return;
+
+  if (isBurning(cfg, s)) {
+    s.chuteState = "torn";
+    s.chuteTear = { cause: "burn", speed };
+    return;
+  }
+
+  const target = s.chuteState === "reefed" ? REEF_FRACTION : 1;
+  const filling = s.chute < target;
+  if (filling) {
+    s.chute = Math.min(target, s.chute + dt / fillTime(speed));
+  } else if (s.chuteState === "reefed") {
+    s.chuteTimer += dt;
+    if (s.chuteTimer >= REEF_TIME) s.chuteState = "open";
+  }
+
+  const load =
+    (filling ? CHUTE_CX : 1) * dynamicPressure(s) * s.chute * CHUTE_CDA;
+  if (load > CHUTE_MAX_LOAD) {
+    s.chuteState = "torn";
+    s.chuteTear = { cause: "fast", speed };
+  }
+}
 
 /** Advance the flight by `dt` seconds. `steer` is −1 (left), 0, or 1 (right). */
 export function step(
@@ -169,7 +448,7 @@ export function step(
   dt: number,
 ): FlightState {
   if (TERMINAL.has(prev.phase)) return prev;
-  const s = { ...prev };
+  const s = { ...prev, fuel: [...prev.fuel] };
 
   if (s.phase === "countdown") {
     s.countdown = Math.max(0, s.countdown - dt);
@@ -183,28 +462,46 @@ export function step(
   const clamped = s.phase === "pad" || s.phase === "countdown";
   if (s.phase === "flying") s.t += dt;
 
-  // Engines: thrust along the nose, fuel burns at thrust / exhaust velocity.
-  const burning = isBurning(s);
-  const thrust = burning ? cfg.thrust * 1000 * s.throttle : 0;
-  if (burning) s.fuel = Math.max(0, s.fuel - (thrust / (ISP * G0)) * dt);
-  if (s.fuel === 0) s.engineOn = false;
-  const mass = cfg.dryMass + s.fuel;
+  const left = remaining(cfg, s);
 
-  // Steering only bites once off the ground.
+  // Engines: only the active stage burns, from its own tanks.
+  const burning = isBurning(cfg, s);
+  const thrust = burning ? activeStage(cfg, s).thrust * 1000 * s.throttle : 0;
+  if (burning) {
+    s.fuel[s.stage] = Math.max(0, activeFuel(s) - (thrust / (ISP * G0)) * dt);
+  }
+  if (activeFuel(s) === 0) s.engineOn = false;
+  const mass = massOf(cfg, s);
+
+  // Steering only bites once off the ground. The capsule does the steering.
   if (s.airborne) {
-    s.heading = wrapAngle(
-      s.heading + steer * (cfg.hasFins ? FIN_TURN_RATE : TURN_RATE) * dt,
-    );
+    const rate =
+      (left.hasFins ? FIN_TURN_RATE : TURN_RATE) *
+      (left.hasCapsule ? 1 : NO_CAPSULE_TURN);
+    s.heading = wrapAngle(s.heading + steer * rate * dt);
   }
 
-  // Parachutes open on the way down and swing the rocket upright beneath them.
-  if (
-    cfg.chutes > 0 &&
-    s.airborne &&
-    (s.chute > 0 || (s.vy < 0 && s.alt < CHUTE_DEPLOY_ALT))
-  ) {
-    s.chute = Math.min(1, s.chute + dt / CHUTE_OPEN_TIME);
-    s.heading -= s.heading * Math.min(1, dt * 1.5 * s.chute);
+  stepChute(cfg, s, dt);
+  const chuteOut = s.chuteState === "reefed" || s.chuteState === "open";
+
+  // Without fins nothing keeps the nose into the wind: it wobbles, and any
+  // lean keeps growing until the player steers against it.
+  if (s.airborne && !left.hasFins && !chuteOut) {
+    const q = Math.min(1, dynamicPressure(s) / WOBBLE_Q);
+    const aero =
+      (burning ? Math.max(WOBBLE_BURN_FLOOR, q) : q) *
+      (left.hasNose ? 1 : BLUNT_WOBBLE_MULT);
+    const noise = Math.sin(2.3 * s.t) + 0.6 * Math.sin(3.9 * s.t + 1.3);
+    s.heading = wrapAngle(
+      s.heading + (WOBBLE_RATE * noise + UNSTABLE_K * s.heading) * aero * dt,
+    );
+  }
+  if (burning && s.airborne) {
+    s.maxTilt = Math.max(s.maxTilt, Math.abs(s.heading));
+  }
+  // A canopy swings the rocket upright beneath it.
+  if (chuteOut) {
+    s.heading -= s.heading * Math.min(1, dt * 1.5 * Math.sqrt(s.chute));
   }
 
   let fx = Math.sin(s.heading) * thrust;
@@ -213,10 +510,13 @@ export function step(
   // Drag opposes motion; capped so it can stop the rocket but never reverse it in one step.
   const speed = Math.hypot(s.vx, s.vy);
   if (speed > 0) {
-    const rho =
-      SEA_LEVEL_DENSITY * Math.exp(-Math.max(0, s.alt) / SCALE_HEIGHT);
-    const cda = BODY_CDA + s.chute * CHUTE_CDA * cfg.chutes;
-    const drag = Math.min(0.5 * rho * speed * speed * cda, (mass * speed) / dt);
+    const cda =
+      BODY_CDA * (left.hasNose ? 1 : BLUNT_DRAG_MULT) +
+      (chuteOut ? s.chute * CHUTE_CDA * left.chutes : 0);
+    const drag = Math.min(
+      0.5 * densityAt(s.alt) * speed * speed * cda,
+      (mass * speed) / dt,
+    );
     fx -= (drag * s.vx) / speed;
     fy -= (drag * s.vy) / speed;
   }
@@ -242,7 +542,7 @@ export function step(
   if (s.airborne && s.alt <= 0) {
     // Touchdown: gentle and upright lands, anything else breaks.
     s.impactSpeed = Math.hypot(s.vx, s.vy);
-    const safe = cfg.hasLegs ? LEGS_SAFE_LANDING : SAFE_LANDING;
+    const safe = left.hasLegs ? LEGS_SAFE_LANDING : SAFE_LANDING;
     s.crashReason =
       s.impactSpeed > safe
         ? "speed"
@@ -261,14 +561,68 @@ export function step(
   s.maxSpeed = Math.max(s.maxSpeed, Math.hypot(s.vx, s.vy));
 
   if (s.alt >= SPACE_ALT) s.phase = "space";
-  else if (
-    s.phase === "flying" &&
-    !s.airborne &&
-    (s.fuel === 0 || cfg.thrust === 0)
-  ) {
+  else if (s.phase === "flying" && !s.airborne && !canStillThrust(cfg, s)) {
     s.phase = "grounded";
     s.engineOn = false;
   }
 
   return s;
+}
+
+// Crash debrief ---------------------------------------------------------------
+
+export interface CrashTip {
+  /** What the rocket lacked. */
+  missing: string;
+  /** What adding it would have done. */
+  fix: string;
+}
+
+/** Which missing parts made this crash worse, most relevant first. */
+export function crashAdvice(cfg: FlightConfig, s: FlightState): CrashTip[] {
+  if (s.phase !== "crashed") return [];
+  const had = remaining(cfg, initialFlight(cfg));
+  const tilt = s.crashReason === "tilt";
+  const deg = Math.round((s.maxTilt * 180) / Math.PI);
+  const tips: { tip: CrashTip; rank: number }[] = [];
+  const add = (rank: number, missing: string, fix: string) =>
+    tips.push({ tip: { missing, fix }, rank });
+
+  if (!had.hasFins) {
+    add(
+      tilt || s.maxTilt > BAD_WOBBLE ? 0 : 3,
+      "No fins",
+      deg > 90
+        ? "It tumbled right over. Fins near the bottom keep it pointing straight."
+        : deg > 0
+          ? `It wobbled up to ${deg}°. Fins near the bottom keep it pointing straight.`
+          : "Fins near the bottom keep it pointing straight.",
+    );
+  }
+  if (!tilt && had.chutes === 0) {
+    add(
+      1,
+      "No parachute",
+      "Put one on top of the capsule to float down gently.",
+    );
+  }
+  if (!had.hasLegs) {
+    add(
+      2,
+      "No legs",
+      tilt
+        ? "Legs give it a wide stance so it lands upright."
+        : `Legs survive touchdowns up to ${LEGS_SAFE_LANDING} m/s instead of ${SAFE_LANDING}.`,
+    );
+  }
+  if (!had.hasNose) {
+    add(4, "No nose cone", "A blunt top drags, so it loses height and speed.");
+  }
+  if (!had.hasCapsule) {
+    add(5, "No capsule", "Steering is sluggish without one to guide it.");
+  }
+  return tips
+    .sort((a, b) => a.rank - b.rank)
+    .slice(0, 3)
+    .map((t) => t.tip);
 }

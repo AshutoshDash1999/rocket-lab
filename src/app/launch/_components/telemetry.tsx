@@ -1,6 +1,6 @@
 "use client";
 
-import { massOf, twrOf } from "@/lib/rocket/flight";
+import { activeFuel, activeStage, massOf, twrOf } from "@/lib/rocket/flight";
 import { G0 } from "@/lib/rocket/stats";
 import { useFlightStore } from "@/lib/rocket/store/flight-store";
 import { layerAt } from "./atmosphere";
@@ -63,27 +63,38 @@ export function MotionPanel({ className = "" }: { className?: string }) {
 export function VehiclePanel({ className = "" }: { className?: string }) {
   const cfg = useFlightStore((st) => st.cfg);
   const s = useFlightStore((st) => st.state);
-  const fuelFrac = cfg.fuelMass > 0 ? s.fuel / cfg.fuelMass : 0;
+  const stage = activeStage(cfg, s);
+  const fuel = activeFuel(s);
+  const fuelFrac = stage.fuelMass > 0 ? fuel / stage.fuelMass : 0;
   const twr = twrOf(cfg, s);
   const twrBadge =
-    cfg.thrust === 0
+    stage.thrust === 0
       ? { text: "No engine", className: "bg-paper-light" }
       : twr > 1
         ? { text: `Go · ${twr.toFixed(2)}`, className: "bg-toon-green" }
         : { text: `No go · ${twr.toFixed(2)}`, className: "bg-[#ffb3a8]" };
 
   return (
-    <Card title="Fuel left" className={className}>
+    <Card
+      title={
+        cfg.stages.length > 1
+          ? `Fuel · stage ${s.stage + 1} of ${cfg.stages.length}`
+          : "Fuel left"
+      }
+      className={className}
+    >
       <div className="mt-1 flex items-center gap-3">
         <FuelTank fraction={fuelFrac} />
         <div>
-          <Big value={fmtInt(s.fuel)} unit="kg" />
+          <Big value={fmtInt(fuel)} unit="kg" />
           <p
             className={`font-hand text-xl leading-none ${
               fuelFrac < 0.15 ? "text-toon-red" : "text-pen/70"
             }`}
           >
-            {cfg.fuelMass > 0 ? `${fmtInt(fuelFrac * 100)}% left` : "no tanks!"}
+            {stage.fuelMass > 0
+              ? `${fmtInt(fuelFrac * 100)}% left`
+              : "no tanks!"}
           </p>
         </div>
       </div>

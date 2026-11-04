@@ -2,8 +2,13 @@
 
 import Link from "next/link";
 import {
+  activeFuel,
+  activeStage,
+  chuteAdvice,
   type FlightConfig,
   type FlightState,
+  remaining,
+  stagesLeft,
   TERMINAL,
   twrOf,
 } from "@/lib/rocket/flight";
@@ -20,12 +25,23 @@ interface Hint {
 function hintFor(cfg: FlightConfig, s: FlightState): Hint | null {
   if (TERMINAL.has(s.phase) || s.phase === "countdown") return null;
   if (s.phase === "pad") {
-    return s.engineOn
-      ? { text: "Test fire! The clamps are holding her down." }
-      : { text: "Ready on the pad. Hit LAUNCH!" };
+    const kit = remaining(cfg, s);
+    if (!kit.hasFins)
+      return {
+        text: "No fins: expect a wobbly ride! Steer against the lean.",
+        warn: true,
+        rebuild: true,
+      };
+    if (!kit.hasNose)
+      return { text: "No nose cone: the blunt top adds drag.", warn: true };
+    return { text: "Ready on the pad. Hit LAUNCH!" };
+  }
+  const stageEmpty = activeFuel(s) === 0 || activeStage(cfg, s).thrust === 0;
+  if (stageEmpty && stagesLeft(cfg, s) > 1) {
+    return { text: "Stage spent. Press Space to drop it!" };
   }
   if (!s.airborne) {
-    if (!s.engineOn) return { text: "Engine's off. Switch it on!" };
+    if (s.throttle === 0) return { text: "Power's at zero. Throttle up (W)!" };
     const twr = twrOf(cfg, s);
     if (twr <= 1) {
       return twrOf(cfg, s, 1) > 1
@@ -41,17 +57,42 @@ function hintFor(cfg: FlightConfig, s: FlightState): Hint | null {
     }
     return null;
   }
-  if (s.chute > 0 && s.chute < 1) return { text: "Parachute out!" };
-  if (s.vy < -30 && s.alt < 4000 && s.chute === 0) {
+  const chute = chuteAdvice(cfg, s);
+  if (
+    !remaining(cfg, s).hasFins &&
+    Math.abs(s.heading) > (15 * Math.PI) / 180 &&
+    s.chuteState === "packed"
+  ) {
+    return { text: "Wobbling! Steer against the lean (← / →).", warn: true };
+  }
+  if (chute.kind === "torn") {
     return {
       text:
-        s.fuel > 0
-          ? "Falling fast with no parachute. Fire the engine to slow down!"
-          : "Falling fast with no parachute… brace!",
+        s.chuteTear?.cause === "burn"
+          ? "Parachute burned! Never fire the engine under a chute."
+          : "Parachute torn! It opened too fast.",
       warn: true,
     };
   }
-  if (s.fuel === 0 && s.vy > 0) return { text: "Out of fuel. Coasting up…" };
+  if (chute.kind === "armed")
+    return { text: "Parachute armed. It opens in thicker air." };
+  if (s.chuteState === "reefed") return { text: "Parachute out! Reefed…" };
+  if (s.vy < -30 && s.alt < 4000 && chute.kind !== "deployed") {
+    const fuel = activeFuel(s) > 0;
+    return {
+      text:
+        chute.kind === "ok"
+          ? "Falling fast. Open the parachute now (P)!"
+          : chute.kind === "too-fast"
+            ? `Too fast for the chute (max ${Math.round(chute.safeSpeed)} m/s).${fuel ? " Burn to slow down!" : ""}`
+            : fuel
+              ? "Falling fast with no parachute. Fire the engine to slow down!"
+              : "Falling fast with no parachute… brace!",
+      warn: true,
+    };
+  }
+  if (activeFuel(s) === 0 && s.vy > 0)
+    return { text: "Out of fuel. Coasting up…" };
   return null;
 }
 

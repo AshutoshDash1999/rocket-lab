@@ -53,8 +53,8 @@ function MissionClock() {
 }
 
 const KEYS: [string, string][] = [
-  ["Space", "launch"],
-  ["E", "engine"],
+  ["Space", "launch / stage"],
+  ["P", "parachute"],
   ["W / S", "power"],
   ["← / →", "steer"],
   ["R", "reset"],
@@ -109,7 +109,7 @@ export function LaunchControl() {
     return () => cancelAnimationFrame(raf);
   }, [ready]);
 
-  // Space launch · E engine · ←/→ A/D steer · W/S ↑/↓ power · R reset.
+  // Space launch, then stage · G stage · P parachute · ←/→ A/D steer · W/S ↑/↓ power · R reset.
   useEffect(() => {
     if (!ready) return;
     const fs = () => useFlightStore.getState();
@@ -122,11 +122,13 @@ export function LaunchControl() {
         return;
       }
       if (e.repeat && e.code === "Space") return;
-      const { state, launch, toggleEngine, setThrottle, reset } = fs();
+      const { state, launch, stage, deployChute, setThrottle, reset } = fs();
       const keys: Record<string, () => void> = {
-        " ": launch,
-        e: toggleEngine,
-        E: toggleEngine,
+        " ": state.phase === "pad" ? launch : stage,
+        g: stage,
+        G: stage,
+        p: deployChute,
+        P: deployChute,
         w: () => setThrottle(state.throttle + 0.1),
         W: () => setThrottle(state.throttle + 0.1),
         ArrowUp: () => setThrottle(state.throttle + 0.1),

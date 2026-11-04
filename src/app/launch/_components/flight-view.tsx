@@ -1,7 +1,13 @@
 "use client";
 
 import { useLayoutEffect, useRef, useState } from "react";
-import { isBurning } from "@/lib/rocket/flight";
+import { CHUTE_ANCHOR_Y } from "@/components/common/part-shape";
+import {
+  activeStage,
+  attachedParts,
+  isBurning,
+  remaining,
+} from "@/lib/rocket/flight";
 import { useFlightStore } from "@/lib/rocket/store/flight-store";
 import { skyAt } from "./atmosphere";
 import { Countdown } from "./countdown";
@@ -26,6 +32,11 @@ const CLOUDS = Array.from({ length: 64 }, (_, i) => ({
   size: 1.2 + ((i * 29) % 10) / 12,
 }));
 
+/** ParachuteShape's drawn size, and how far above its bottom its lines meet, px. */
+const CANOPY_W = 240;
+const CANOPY_H = 190;
+const CHUTE_LINES_INSET = 4;
+
 const mod = (a: number, n: number) => ((a % n) + n) % n;
 
 /**
@@ -33,7 +44,6 @@ const mod = (a: number, n: number) => ((a % n) + n) % n;
  * up once it leaves the lower part of the view; scenery moves past it.
  */
 export function FlightView({ className = "" }: { className?: string }) {
-  const parts = useFlightStore((st) => st.parts);
   const cfg = useFlightStore((st) => st.cfg);
   const s = useFlightStore((st) => st.state);
   const run = useFlightStore((st) => st.run);
@@ -50,7 +60,18 @@ export function FlightView({ className = "" }: { className?: string }) {
     return () => ro.disconnect();
   }, []);
 
+  const parts = attachedParts(cfg, s);
+  const dropped = s.stage > 0 ? cfg.stages[s.stage - 1].parts : [];
+  const burningUids = new Set(activeStage(cfg, s).parts.map((p) => p.uid));
   const box = rocketBox(parts);
+  const chutePart = parts.find((p) => p.partId === "parachute");
+  const chuteTop = chutePart ? chutePart.y - box.y : 0;
+  const chuteShown =
+    s.chuteState === "reefed" ||
+    s.chuteState === "open" ||
+    (s.chuteState === "torn" && s.chute > 0);
+  // Drag area grows with diameter squared, so the canopy's width follows √fill.
+  const spread = Math.sqrt(s.chute);
   const scale = Math.min(0.7, Math.max(0.12, (view.h * 0.36) / box.h));
   const ppm = DRAWING_PX_PER_M * scale;
 
@@ -68,7 +89,7 @@ export function FlightView({ className = "" }: { className?: string }) {
   const groundTop = toY(0);
   const groundVisible = groundTop < view.h + 40;
 
-  const burning = isBurning(s);
+  const burning = isBurning(cfg, s);
   const crashed = s.phase === "crashed";
   const landed = s.phase === "landed";
   // Altitude ruler: 10 m ticks while slow, 100 m once ticks would blur together.
@@ -164,20 +185,32 @@ export function FlightView({ className = "" }: { className?: string }) {
             transform: `translate(${view.w / 2 - rocketW / 2}px, ${baseY - rocketH}px) rotate(${s.heading}rad)`,
           }}
         >
-          {s.chute > 0 && (
+          {chuteShown && (
             <div
-              className={`absolute left-1/2 origin-bottom ${landed ? "rl-chute-collapse" : ""}`}
+              className={`absolute left-1/2 origin-bottom ${
+                s.chuteState === "torn"
+                  ? "rl-chute-tear"
+                  : landed
+                    ? "rl-chute-collapse"
+                    : ""
+              }`}
               style={{
-                bottom: rocketH - 4 * scale,
-                width: 240 * scale,
-                transform: `translateX(-50%) scale(${0.2 + 0.8 * s.chute})`,
+                // Lines meet 4 px above the art's bottom edge; put that on the pack.
+                bottom:
+                  rocketH -
+                  (chuteTop + CHUTE_ANCHOR_Y + CHUTE_LINES_INSET) * scale,
+                width: CANOPY_W * scale,
+                height: CANOPY_H * scale,
+                transform: `translateX(-50%) scale(${0.25 + 0.75 * spread}, ${0.45 + 0.55 * spread})`,
               }}
             >
-              <div
-                className="origin-top-left"
-                style={{ transform: `scale(${scale})` }}
-              >
-                <ParachuteShape />
+              <div className="rl-chute-eject origin-bottom">
+                <div
+                  className="origin-top-left"
+                  style={{ transform: `scale(${scale})` }}
+                >
+                  <ParachuteShape />
+                </div>
               </div>
             </div>
           )}
@@ -192,6 +225,8 @@ export function FlightView({ className = "" }: { className?: string }) {
             >
               <RocketModel
                 parts={parts}
+                dropped={dropped}
+                burningUids={burningUids}
                 box={box}
                 flame={burning ? s.throttle : 0}
                 wrecked={crashed}
@@ -249,8 +284,9 @@ export function FlightView({ className = "" }: { className?: string }) {
       <Countdown />
       <OutcomeBanner />
       <p className="sr-only">
-        Rocket has {cfg.chutes} parachute{cfg.chutes === 1 ? "" : "s"}
-        {cfg.hasLegs ? " and landing legs" : ""}.
+        Rocket has {remaining(cfg, s).chutes} parachute
+        {remaining(cfg, s).chutes === 1 ? "" : "s"}
+        {remaining(cfg, s).hasLegs ? " and landing legs" : ""}.
       </p>
     </section>
   );
