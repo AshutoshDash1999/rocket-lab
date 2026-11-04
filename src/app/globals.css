@@ -1,26 +1,217 @@
 @import "tailwindcss";
 
+/* Design tokens — see DESIGN.md */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+  --canvas: #ffffff;
+  --surface: #e7f8d6;
+  --surface-raised: #e0f1d2;
+  --surface-alt: #f5f8ff;
+  --ink: #44506b;
+  --body: #6b7690;
+  --hairline: #e7ebf3;
+  --primary: #2563ff;
+  --primary-fg: #ffffff;
+  --link: #1a47cc;
+  --on-primary: #0e1a3a;
+  --accent-1: #a9c1ff;
+  --accent-2: #f9dc5c;
+  --accent-3: #ff6b4a;
+  --neutral-1: #eaf0ff;
+  --badge: #ffc933;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* Cartoon builder palette — fixed in both themes (ink on paper/blueprint) */
+  --pen: #1b1b29;
+  --paper: #f6efdf;
+  --paper-light: #fffaf0;
+  --toon-red: #ff4a3d;
+  --toon-yellow: #ffd23f;
+  --toon-green: #7ddc8b;
+  --blueprint: #1f57a4;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --canvas: #0a0c15;
+    --surface: #191b23;
+    --surface-raised: #25272f;
+    --surface-alt: #191b23;
+    --ink: #f6f9ff;
+    --body: #9c9fa6;
+    --hairline: #31333a;
+    --primary: #3972ff;
+    --primary-fg: #ffffff;
+    --link: #a9c1ff;
+    --on-primary: #f6f9ff;
+    --neutral-1: #25272f;
   }
 }
 
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-alt: var(--surface-alt);
+  --color-ink: var(--ink);
+  --color-body: var(--body);
+  --color-hairline: var(--hairline);
+  --color-primary: var(--primary);
+  --color-primary-fg: var(--primary-fg);
+  --color-link: var(--link);
+  --color-on-primary: var(--on-primary);
+  --color-accent-1: var(--accent-1);
+  --color-accent-2: var(--accent-2);
+  --color-accent-3: var(--accent-3);
+  --color-neutral-1: var(--neutral-1);
+  --color-badge: var(--badge);
+  --color-pen: var(--pen);
+  --color-paper: var(--paper);
+  --color-paper-light: var(--paper-light);
+  --color-toon-red: var(--toon-red);
+  --color-toon-yellow: var(--toon-yellow);
+  --color-toon-green: var(--toon-green);
+  --color-blueprint: var(--blueprint);
+
+  --font-display: var(--font-fredoka), system-ui, sans-serif;
+  --font-sans:
+    var(--font-nunito), -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  --font-hand: var(--font-caveat), "Comic Sans MS", cursive;
+
+  --radius-xs: 10px;
+  --radius-sm: 18px;
+  --radius-md: 20px;
+  --radius-xl: 28px;
+
+  --shadow-sm: rgba(14, 26, 58, 0.5) 0px 18px 30px -24px;
+  --shadow-md: rgba(37, 99, 255, 0.45) 0px 24px 60px -30px;
+  --shadow-lg: rgba(37, 99, 255, 0.65) 0px 8px 20px -8px;
+  --shadow-xl: rgba(14, 26, 58, 0.35) 0px 2px 8px -4px;
+  --shadow-card-hover: rgba(14, 26, 58, 0.45) 0px 22px 40px -28px;
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--canvas);
+  color: var(--body);
+  font-family: var(--font-sans);
+}
+
+:focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* ---------- Rocket builder: paper, blueprint, ink ---------- */
+
+.paper {
+  background-color: var(--paper);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .35 0 0 0 0 .28 0 0 0 0 .15 0 0 0 .22 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.graph-paper {
+  background-color: #eef3fb;
+  background-image:
+    linear-gradient(rgba(31, 87, 164, 0.16) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(31, 87, 164, 0.16) 1px, transparent 1px);
+  background-size: 8px 8px;
+}
+
+.blueprint {
+  background-color: var(--blueprint);
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.26) 1.5px, transparent 1.5px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.26) 1.5px, transparent 1.5px),
+    linear-gradient(rgba(255, 255, 255, 0.09) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.09) 1px, transparent 1px);
+  background-size:
+    100px 100px,
+    100px 100px,
+    20px 20px,
+    20px 20px;
+  /* background-position/size follow the camera: set inline by BlueprintCanvas */
+}
+
+@keyframes rl-liftoff {
+  0% {
+    transform: translate(0, 0);
+  }
+  4% {
+    transform: translate(-2px, 1px);
+  }
+  8% {
+    transform: translate(2px, -1px);
+  }
+  12% {
+    transform: translate(-2px, 0);
+  }
+  16% {
+    transform: translate(0, 0);
+    animation-timing-function: cubic-bezier(0.55, 0, 0.9, 0.55);
+  }
+  100% {
+    transform: translateY(-150vh);
+  }
+}
+
+@keyframes rl-return {
+  from {
+    transform: translateY(-48px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@keyframes rl-fizzle {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-7px) rotate(-1.2deg);
+  }
+  40% {
+    transform: translateX(6px) rotate(1deg);
+  }
+  60% {
+    transform: translateX(-4px) rotate(-0.6deg);
+  }
+  80% {
+    transform: translateX(3px);
+  }
+}
+
+@keyframes rl-flicker {
+  from {
+    transform: scaleY(1);
+  }
+  to {
+    transform: scaleY(1.22);
+  }
+}
+
+.launch-fly {
+  animation: rl-liftoff 2.8s linear forwards;
+}
+.launch-return {
+  animation: rl-return 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.launch-fizzle {
+  animation: rl-fizzle 0.5s ease-in-out;
+}
+.flame svg {
+  transform-origin: 50% 0;
+  animation: rl-flicker 0.12s steps(2) infinite alternate;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .launch-fly,
+  .launch-return,
+  .launch-fizzle {
+    animation-duration: 1ms;
+  }
+  .flame svg {
+    animation: none;
+  }
 }
