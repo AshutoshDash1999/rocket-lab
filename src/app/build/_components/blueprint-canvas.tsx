@@ -7,7 +7,7 @@ import {
   type PlacedPart,
 } from "@/lib/rocket/canvas";
 import { PARTS } from "@/lib/rocket/parts";
-import { FlameShape, PartShape } from "./part-shape";
+import { FlameShape, PartShape } from "@/components/common/part-shape";
 import { ZoomControls } from "./zoom-controls";
 
 export type LaunchPhase = "idle" | "flying" | "returning" | "fizzle";

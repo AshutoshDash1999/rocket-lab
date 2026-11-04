@@ -1,7 +1,7 @@
 import { RocketStats } from "@/components/common/rocket-stats";
 import type { RocketStats as Stats } from "@/lib/rocket/stats";
-import { PartShape } from "./part-shape";
-import { toonButton } from "./toon-button";
+import { PartShape } from "@/components/common/part-shape";
+import { toonButton } from "@/components/common/toon-button";
 
 export function TopBar({
   stats,

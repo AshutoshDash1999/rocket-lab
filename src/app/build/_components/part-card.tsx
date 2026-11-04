@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
+import { PartShape } from "@/components/common/part-shape";
 import { PartTooltip } from "@/components/common/part-tooltip";
 import type { PartDef } from "@/lib/rocket/parts";
-import { PartShape } from "./part-shape";
 
 const fmt = (n: number) => n.toLocaleString("en-US");
 

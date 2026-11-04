@@ -17,7 +17,7 @@ import {
 import type { PartId } from "@/lib/rocket/parts";
 import { computeRocketStats } from "@/lib/rocket/stats";
 import { BlueprintCanvas, type LaunchPhase } from "./blueprint-canvas";
-import { PartShape, partSize } from "./part-shape";
+import { PartShape, partSize } from "@/components/common/part-shape";
 import { PartsCatalog } from "./parts-catalog";
 import { TopBar } from "./top-bar";
 
