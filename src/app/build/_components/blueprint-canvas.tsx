@@ -1,5 +1,6 @@
 "use client";
 
+import { PartShape } from "@/components/common/part-shape";
 import {
   type Box,
   type Camera,
@@ -7,17 +8,7 @@ import {
   type PlacedPart,
 } from "@/lib/rocket/canvas";
 import { PARTS } from "@/lib/rocket/parts";
-import { FlameShape, PartShape } from "@/components/common/part-shape";
 import { ZoomControls } from "./zoom-controls";
-
-export type LaunchPhase = "idle" | "flying" | "returning" | "fizzle";
-
-const LAUNCH_CLASS: Record<LaunchPhase, string> = {
-  idle: "",
-  flying: "launch-fly",
-  returning: "launch-return",
-  fizzle: "launch-fizzle",
-};
 
 /**
  * Infinite, pannable, zoomable blueprint. Parts live in world units inside a
@@ -30,9 +21,6 @@ export function BlueprintCanvas({
   parts,
   draggingUid,
   landing,
-  launch,
-  message,
-  onLaunchEnd,
   onPressCanvas,
   onPressPart,
   onNudge,
@@ -51,9 +39,6 @@ export function BlueprintCanvas({
   draggingUid: string | null;
   /** Where the dragged part would land (world units), shown as a dashed outline. */
   landing: (Box & { stacked: boolean }) | null;
-  launch: LaunchPhase;
-  message: string | null;
-  onLaunchEnd: () => void;
   /** Pointer down on empty canvas: starts a pan. */
   onPressCanvas: (e: React.PointerEvent<HTMLElement>) => void;
   onPressPart: (e: React.PointerEvent<HTMLElement>, part: PlacedPart) => void;
@@ -64,7 +49,6 @@ export function BlueprintCanvas({
   onZoomReset: () => void;
   onZoomFit: () => void;
 }) {
-  const busy = launch !== "idle";
   const { x, y, zoom } = camera;
   const major = 100 * zoom;
   const minor = 20 * zoom;
@@ -102,15 +86,10 @@ export function BlueprintCanvas({
       )}
 
       <div
-        className={`absolute top-0 left-0 origin-top-left ${busy ? "pointer-events-none" : ""}`}
+        className="absolute top-0 left-0 origin-top-left"
         style={{ transform: `translate(${x}px, ${y}px) scale(${zoom})` }}
       >
-        <div
-          className={LAUNCH_CLASS[launch]}
-          onAnimationEnd={(e) => {
-            if (e.target === e.currentTarget) onLaunchEnd();
-          }}
-        >
+        <div>
           {parts.map((item) => {
             const part = PARTS[item.partId];
             return (
@@ -146,14 +125,6 @@ export function BlueprintCanvas({
                 }`}
               >
                 <PartShape partId={item.partId} />
-                {launch === "flying" && part.thrust > 0 && (
-                  <div
-                    aria-hidden
-                    className="flame absolute top-full left-0 -z-10 -mt-2"
-                  >
-                    <FlameShape />
-                  </div>
-                )}
                 <span className="pointer-events-none absolute bottom-full left-1/2 mb-2 hidden -translate-x-1/2 -rotate-1 rounded-[6px] border-2 border-pen bg-paper-light px-2 py-0.5 font-hand text-xl leading-none font-bold whitespace-nowrap text-pen shadow-[2px_2px_0_var(--pen)] group-hover:block group-focus-visible:block">
                   {part.name}
                 </span>
@@ -187,17 +158,6 @@ export function BlueprintCanvas({
           />
         )}
       </div>
-
-      <p
-        role="status"
-        className={
-          message
-            ? "pointer-events-none absolute top-4 left-1/2 z-10 max-w-[min(90%,28rem)] -translate-x-1/2 -rotate-1 rounded-[6px] border-[2.5px] border-pen bg-paper-light px-4 py-1.5 text-center font-hand text-2xl leading-tight text-pen shadow-[3px_3px_0_var(--pen)]"
-            : "sr-only"
-        }
-      >
-        {message}
-      </p>
 
       <ZoomControls
         zoom={zoom}

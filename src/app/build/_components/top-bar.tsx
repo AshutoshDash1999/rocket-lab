@@ -1,21 +1,22 @@
-import { RocketStats } from "@/components/common/rocket-stats";
-import type { RocketStats as Stats } from "@/lib/rocket/stats";
+import Link from "next/link";
 import { PartShape } from "@/components/common/part-shape";
+import { RocketStats } from "@/components/common/rocket-stats";
 import { toonButton } from "@/components/common/toon-button";
+import type { RocketStats as Stats } from "@/lib/rocket/stats";
 
 export function TopBar({
   stats,
   partCount,
-  busy,
   onLaunch,
   onClear,
 }: {
   stats: Stats;
   partCount: number;
-  busy: boolean;
+  /** Hand the rocket over to the launch pad (runs before navigating). */
   onLaunch: () => void;
   onClear: () => void;
 }) {
+  const empty = partCount === 0;
   return (
     <header className="paper relative z-10 flex flex-wrap items-center gap-x-8 gap-y-2 border-b-[3px] border-pen px-4 py-3 md:px-6">
       <div className="flex items-center gap-3">
@@ -40,19 +41,28 @@ export function TopBar({
         <button
           type="button"
           onClick={onClear}
-          disabled={partCount === 0 || busy}
+          disabled={empty}
           className={`${toonButton} bg-paper-light`}
         >
           Clear
         </button>
-        <button
-          type="button"
-          onClick={onLaunch}
-          disabled={partCount === 0 || busy}
-          className={`${toonButton} bg-toon-red sm:px-5`}
-        >
-          Launch
-        </button>
+        {empty ? (
+          <button
+            type="button"
+            disabled
+            className={`${toonButton} bg-toon-red sm:px-5`}
+          >
+            Launch
+          </button>
+        ) : (
+          <Link
+            href="/launch"
+            onClick={onLaunch}
+            className={`${toonButton} bg-toon-red sm:px-5`}
+          >
+            Launch
+          </Link>
+        )}
       </div>
     </header>
   );

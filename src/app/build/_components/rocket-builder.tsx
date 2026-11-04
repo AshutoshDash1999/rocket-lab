@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { PartShape, partSize } from "@/components/common/part-shape";
 import {
   type Box,
   type Camera,
@@ -16,8 +17,8 @@ import {
 } from "@/lib/rocket/canvas";
 import type { PartId } from "@/lib/rocket/parts";
 import { computeRocketStats } from "@/lib/rocket/stats";
-import { BlueprintCanvas, type LaunchPhase } from "./blueprint-canvas";
-import { PartShape, partSize } from "@/components/common/part-shape";
+import { useRocketStore } from "@/lib/rocket/store/rocket-store";
+import { BlueprintCanvas } from "./blueprint-canvas";
 import { PartsCatalog } from "./parts-catalog";
 import { TopBar } from "./top-bar";
 
@@ -59,6 +60,13 @@ const isTextField = (t: EventTarget | null) =>
 const inside = (r: DOMRect | undefined, p: Point) =>
   !!r && p.x >= r.left && p.x <= r.right && p.y >= r.top && p.y <= r.bottom;
 
+/** Next free `part-N` id after the ones already on the canvas. */
+const nextUidAfter = (parts: readonly PlacedPart[]) =>
+  Math.max(
+    -1,
+    ...parts.map((p) => Number(p.uid.match(/^part-(\d+)$/)?.[1] ?? -1)),
+  ) + 1;
+
 const boxOf = (p: PlacedPart): Box => ({
   x: p.x,
   y: p.y,
@@ -67,8 +75,6 @@ const boxOf = (p: PlacedPart): Box => ({
 
 export function RocketBuilder() {
   const [parts, setParts] = useState<PlacedPart[]>([]);
-  const [launch, setLaunch] = useState<LaunchPhase>("idle");
-  const [message, setMessage] = useState<string | null>(null);
   const [drag, setDragState] = useState<Drag | null>(null);
   const [camera, setCameraState] = useState<Camera>({ x: 0, y: 0, zoom: 1 });
   const [panning, setPanning] = useState<"ready" | "active" | null>(null);
@@ -88,13 +94,7 @@ export function RocketBuilder() {
   }, [parts]);
 
   const stats = computeRocketStats(parts.map((p) => p.partId));
-  const busy = launch !== "idle";
-
-  /** Any edit to the rocket clears the last launch verdict. */
-  const edit = (fn: (ps: PlacedPart[]) => PlacedPart[]) => {
-    setParts(fn);
-    setMessage(null);
-  };
+  const edit = (fn: (ps: PlacedPart[]) => PlacedPart[]) => setParts(fn);
   const removePart = (uid: string) =>
     edit((ps) => ps.filter((p) => p.uid !== uid));
 
@@ -133,10 +133,18 @@ export function RocketBuilder() {
     setPanning("active");
   };
 
-  // Starter rocket, centred and resting near the bottom of the canvas.
+  // The rocket last sent to the pad, or a starter rocket centred near the bottom.
   useLayoutEffect(() => {
     const b = canvasBounds();
-    if (b) setParts(stackColumn(STARTER, b.w / 2, b.h - 40, partSize));
+    void Promise.resolve(useRocketStore.persist.rehydrate()).then(() => {
+      const saved = useRocketStore.getState().parts;
+      if (saved.length > 0) {
+        nextId.current = nextUidAfter(saved);
+        setParts(saved);
+      } else if (b) {
+        setParts(stackColumn(STARTER, b.w / 2, b.h - 40, partSize));
+      }
+    });
   }, []);
 
   // Pointer-driven drag: catalog → canvas adds, canvas → canvas moves,
@@ -226,10 +234,8 @@ export function RocketBuilder() {
             return [...ps.filter((p) => p !== item), { ...item, x, y }];
           });
         }
-        setMessage(null);
       } else if (d.overSidebar && source.kind === "canvas") {
         setParts((ps) => ps.filter((p) => p.uid !== source.uid));
-        setMessage(null);
       }
     };
 
@@ -316,7 +322,7 @@ export function RocketBuilder() {
   }, []);
 
   const press = (e: React.PointerEvent, source: DragSource, grab: Point) => {
-    if (e.button !== 0 || busy) return;
+    if (e.button !== 0) return;
     pressRef.current = { source, grab, start: { x: e.clientX, y: e.clientY } };
   };
 
@@ -352,29 +358,6 @@ export function RocketBuilder() {
       ps.map((p) => (p.uid === uid ? { ...p, x: p.x + dx, y: p.y + dy } : p)),
     );
 
-  const handleLaunch = () => {
-    if (stats.twr > 1) {
-      setLaunch("flying");
-      setMessage("3… 2… 1… liftoff!");
-    } else {
-      setLaunch("fizzle");
-      setMessage(
-        stats.thrust === 0
-          ? "No engine, no liftoff. Add one to the rocket."
-          : `Too heavy! Thrust/weight is ${stats.twr.toFixed(2)}, needs more than 1.`,
-      );
-    }
-  };
-
-  const handleLaunchEnd = () => {
-    if (launch === "flying") {
-      setLaunch("returning");
-      setMessage("Clean flight! Rolled out a fresh one.");
-    } else {
-      setLaunch("idle");
-    }
-  };
-
   return (
     <div
       className={`flex h-dvh flex-col overflow-hidden bg-paper select-none ${drag ? "cursor-grabbing" : ""}`}
@@ -382,8 +365,7 @@ export function RocketBuilder() {
       <TopBar
         stats={stats}
         partCount={parts.length}
-        busy={busy}
-        onLaunch={handleLaunch}
+        onLaunch={() => useRocketStore.getState().setParts(parts)}
         onClear={() => edit(() => [])}
       />
       <div className="flex min-h-0 flex-1 flex-col-reverse md:grid md:grid-cols-[300px_minmax(0,1fr)]">
@@ -407,9 +389,6 @@ export function RocketBuilder() {
           parts={parts}
           draggingUid={drag?.source.kind === "canvas" ? drag.source.uid : null}
           landing={drag?.landing ?? null}
-          launch={launch}
-          message={message}
-          onLaunchEnd={handleLaunchEnd}
           onPressCanvas={startPan}
           onPressPart={(e, item) => {
             // Hand tool or middle button pans even when starting on a part.
