@@ -4,13 +4,14 @@ import { toonButton } from "@/components/common/toon-button";
 import {
   activeStage,
   isBurning,
+  rcsCapacity,
   stagesLeft,
   TERMINAL,
   thrustNow,
 } from "@/lib/rocket/flight";
 import { useFlightStore } from "@/lib/rocket/store/flight-store";
 import { fmtInt } from "./format";
-import { PowerDial } from "./gauges";
+import { AirTank, PowerDial } from "./gauges";
 import { CARD, LABEL } from "./panel";
 import { ParachuteControl } from "./parachute-control";
 
@@ -69,6 +70,9 @@ export function ControlPanel({ className = "" }: { className?: string }) {
   const burning = isBurning(cfg, s);
   const canStage = s.phase === "flying" && stagesLeft(cfg, s) > 1;
   const pct = Math.round(s.throttle * 100);
+  const airPct = Math.round((s.air / rcsCapacity(cfg)) * 100);
+  const noAir = s.air <= 0;
+  const canSteer = !over && s.airborne && !noAir;
   const launchLabel =
     s.phase === "pad"
       ? "LAUNCH"
@@ -146,14 +150,32 @@ export function ControlPanel({ className = "" }: { className?: string }) {
       <Divider />
 
       <div className="flex items-center gap-2">
-        <SteerButton dir={-1} disabled={over || !s.airborne} />
-        <div className="w-14 text-center">
+        <SteerButton dir={-1} disabled={!canSteer} />
+        <div className="w-16 text-center">
           <p className={LABEL}>Steer</p>
-          <p className="font-hand text-lg leading-none text-pen/70">
-            {s.airborne ? "hold" : "after liftoff"}
+          <p
+            className={`font-hand text-lg leading-none ${noAir ? "text-toon-red" : "text-pen/70"}`}
+          >
+            {noAir ? "no air" : s.airborne ? "hold" : "after liftoff"}
           </p>
         </div>
-        <SteerButton dir={1} disabled={over || !s.airborne} />
+        <SteerButton dir={1} disabled={!canSteer} />
+        <div
+          className="flex items-center gap-1"
+          title="Compressed air for the steering jets. It does not refill."
+        >
+          <AirTank fraction={airPct / 100} />
+          <div className="leading-none">
+            <p className={LABEL}>Air</p>
+            <p
+              className={`font-display text-lg font-semibold tabular-nums ${
+                airPct < 15 ? "text-toon-red" : "text-pen"
+              }`}
+            >
+              {airPct}%
+            </p>
+          </div>
+        </div>
       </div>
 
       <ParachuteControl />

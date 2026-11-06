@@ -4,11 +4,14 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { CHUTE_ANCHOR_Y } from "@/components/common/part-shape";
 import {
   activeStage,
+  airflow,
   attachedParts,
   isBurning,
   remaining,
+  TERMINAL,
 } from "@/lib/rocket/flight";
 import { useFlightStore } from "@/lib/rocket/store/flight-store";
+import { Airflow, RcsPuffs } from "./airflow";
 import { skyAt } from "./atmosphere";
 import { Countdown } from "./countdown";
 import { CrashBurst } from "./crash-burst";
@@ -47,6 +50,7 @@ export function FlightView({ className = "" }: { className?: string }) {
   const cfg = useFlightStore((st) => st.cfg);
   const s = useFlightStore((st) => st.state);
   const run = useFlightStore((st) => st.run);
+  const steer = useFlightStore((st) => st.steer);
 
   const ref = useRef<HTMLElement>(null);
   const [view, setView] = useState({ w: 800, h: 600 });
@@ -91,7 +95,25 @@ export function FlightView({ className = "" }: { className?: string }) {
 
   const burning = isBurning(cfg, s);
   const crashed = s.phase === "crashed";
+  const brokeUp = crashed && s.crashReason === "breakup";
   const landed = s.phase === "landed";
+  // Air effects only while flying free; an open canopy hides the rocket's own.
+  const flow =
+    s.phase === "flying" &&
+    s.airborne &&
+    s.chuteState !== "reefed" &&
+    s.chuteState !== "open"
+      ? airflow(s)
+      : null;
+  const airProps = flow && {
+    flow,
+    heading: s.heading,
+    t: s.t,
+    cx: view.w / 2,
+    cy: baseY - rocketH / 2,
+    w: rocketW,
+    h: rocketH,
+  };
   // Altitude ruler: 10 m ticks while slow, 100 m once ticks would blur together.
   const tick = ppm * 10 >= 28 && Math.abs(s.vy) < 400 ? 10 : 100;
   const altTop = (groundY + cam) / ppm;
@@ -176,6 +198,8 @@ export function FlightView({ className = "" }: { className?: string }) {
           </>
         )}
 
+        {airProps && <Airflow layer="back" {...airProps} />}
+
         {/* Rocket: positioned by its base centre, rotated about its middle. */}
         <div
           className="absolute top-0 left-0"
@@ -233,7 +257,27 @@ export function FlightView({ className = "" }: { className?: string }) {
               />
             </div>
           </div>
+          {s.airborne && !TERMINAL.has(s.phase) && (
+            <RcsPuffs
+              steer={steer}
+              empty={s.air <= 0}
+              parts={parts}
+              box={box}
+              scale={scale}
+            />
+          )}
         </div>
+
+        {airProps && <Airflow layer="front" {...airProps} />}
+
+        {brokeUp && (
+          <div
+            className="absolute"
+            style={{ left: view.w / 2, top: baseY - rocketH * 0.3 }}
+          >
+            <CrashBurst scale={scale} />
+          </div>
+        )}
 
         {groundVisible && (
           <div
@@ -242,7 +286,7 @@ export function FlightView({ className = "" }: { className?: string }) {
           >
             {burning && s.alt < 80 && <PadSmoke scale={scale} />}
             {landed && <Dust scale={scale} />}
-            {crashed && <CrashBurst scale={scale} />}
+            {crashed && !brokeUp && <CrashBurst scale={scale} />}
           </div>
         )}
 

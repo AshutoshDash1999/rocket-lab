@@ -5,8 +5,13 @@ import {
   activeFuel,
   activeStage,
   chuteAdvice,
+  dynamicPressure,
   type FlightConfig,
   type FlightState,
+  isBurning,
+  MAX_Q_LIMIT,
+  MAX_Q_WARN,
+  rcsCapacity,
   remaining,
   stagesLeft,
   TERMINAL,
@@ -58,6 +63,16 @@ function hintFor(cfg: FlightConfig, s: FlightState): Hint | null {
     return null;
   }
   const chute = chuteAdvice(cfg, s);
+  if (dynamicPressure(s) > MAX_Q_WARN * MAX_Q_LIMIT && isBurning(cfg, s)) {
+    return {
+      text: "Max Q! The air is crushing the rocket. Throttle down (S)!",
+      warn: true,
+    };
+  }
+  if (s.air <= 0 && s.chuteState === "packed")
+    return { text: "Steering air is empty. No more turning!", warn: true };
+  if (s.air < 0.15 * rcsCapacity(cfg) && s.chuteState === "packed")
+    return { text: "Steering air low. Turn only when you must.", warn: true };
   if (
     !remaining(cfg, s).hasFins &&
     Math.abs(s.heading) > (15 * Math.PI) / 180 &&

@@ -240,3 +240,100 @@ export function Compass({ heading }: { heading: number }) {
     </svg>
   );
 }
+
+/** Compressed-air bottle for the steering jets, with a pressure needle. */
+export function AirTank({ fraction }: { fraction: number }) {
+  const f = Math.min(1, Math.max(0, fraction));
+  const low = f < 0.15;
+  // Needle sweeps from empty (left) to full (right) over the top of the dial.
+  const angle = -120 + f * 240;
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 44 64"
+      width={30}
+      height={44}
+      className={low && f > 0 ? "rl-wobble" : ""}
+    >
+      <g {...ink}>
+        <rect x="8" y="22" width="28" height="38" rx="12" fill="#c4e8ff" />
+        <rect x="18" y="16" width="8" height="7" rx="2" fill="#a3a9bd" />
+        <circle cx="22" cy="12" r="10" fill="#fffdf7" />
+      </g>
+      <path
+        d="M14.9 19.1 A10 10 0 0 1 12 12"
+        stroke="#ff4a3d"
+        strokeWidth={3}
+        fill="none"
+      />
+      <line
+        x1="22"
+        y1="12"
+        x2="22"
+        y2="5"
+        stroke={PEN}
+        strokeWidth={2.5}
+        strokeLinecap="round"
+        transform={`rotate(${angle} 22 12)`}
+        className="transition-transform duration-150 motion-reduce:transition-none"
+      />
+      <circle cx="22" cy="12" r="2" fill={PEN} />
+      <rect
+        x="12"
+        y={58 - 30 * f}
+        width="20"
+        height={30 * f}
+        rx="6"
+        fill={low ? "#ff4a3d" : "#2f7cf6"}
+        opacity={0.55}
+      />
+      <circle cx="22" cy="12" r="10" fill="none" {...ink} />
+    </svg>
+  );
+}
+
+/** Air-pressure bar: fills toward the airframe's limit, red past the warning line. */
+export function PressureBar({
+  q,
+  limit,
+  warn,
+}: {
+  q: number;
+  limit: number;
+  /** Warning line as a fraction of the limit. */
+  warn: number;
+}) {
+  const f = Math.min(1, Math.max(0, q / limit));
+  const x0 = 4;
+  const w = 112;
+  return (
+    <svg aria-hidden="true" viewBox="0 0 120 20" width="100%" height={18}>
+      <rect x={x0} y="4" width={w} height="12" rx="6" fill="#fffdf7" />
+      <rect
+        x={x0 + w * warn}
+        y="4"
+        width={w * (1 - warn)}
+        height="12"
+        fill="#ffb3a8"
+      />
+      <rect
+        x={x0}
+        y="4"
+        width={w * f}
+        height="12"
+        rx="6"
+        fill={f >= warn ? "#ff4a3d" : "#ffd23f"}
+      />
+      <rect x={x0} y="4" width={w} height="12" rx="6" fill="none" {...ink} />
+      <line
+        x1={x0 + w * warn}
+        x2={x0 + w * warn}
+        y1="2"
+        y2="18"
+        stroke={PEN}
+        strokeWidth={2}
+        strokeDasharray="3 2"
+      />
+    </svg>
+  );
+}

@@ -468,6 +468,38 @@ body {
   animation: rl-smoke 1.8s ease-out both;
 }
 
+/* Steering jet: a puff of compressed air shot sideways. --dx sets the side. */
+@keyframes rl-rcs {
+  0% {
+    transform: translate(0, 0) scale(0.35);
+    opacity: 0.95;
+  }
+  100% {
+    transform: translate(var(--dx), 0) scale(1.15);
+    opacity: 0;
+  }
+}
+.rl-rcs {
+  animation: rl-rcs 0.33s ease-out infinite;
+}
+/* Empty air bottle: a weak, slow cough. */
+.rl-rcs-sputter {
+  animation: rl-rcs 0.9s ease-out infinite;
+}
+
+/* Reentry heat shimmers. */
+@keyframes rl-heat {
+  from {
+    filter: brightness(1);
+  }
+  to {
+    filter: brightness(1.35);
+  }
+}
+.rl-heat {
+  animation: rl-heat 0.12s steps(2) infinite alternate;
+}
+
 /* Nearly empty fuel tank wobbles for attention. */
 @keyframes rl-wobble {
   0%,
@@ -542,8 +574,16 @@ body {
   .rl-squash,
   .rl-plane,
   .rl-bob,
-  .rl-aurora {
+  .rl-aurora,
+  .rl-heat {
     animation: none;
+  }
+  /* Steering puffs hold still beside the rocket instead of streaming. */
+  .rl-rcs,
+  .rl-rcs-sputter {
+    animation: none;
+    transform: translate(calc(var(--dx) * 0.5), 0) scale(0.8);
+    opacity: 0.8;
   }
   .rl-meteor {
     visibility: hidden;

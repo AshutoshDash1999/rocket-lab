@@ -1,11 +1,19 @@
 "use client";
 
-import { activeFuel, activeStage, massOf, twrOf } from "@/lib/rocket/flight";
+import {
+  activeFuel,
+  activeStage,
+  airflow,
+  MAX_Q_LIMIT,
+  MAX_Q_WARN,
+  massOf,
+  twrOf,
+} from "@/lib/rocket/flight";
 import { G0 } from "@/lib/rocket/stats";
 import { useFlightStore } from "@/lib/rocket/store/flight-store";
 import { layerAt } from "./atmosphere";
 import { fmtAlt, fmtDeg, fmtInt, fmtOne } from "./format";
-import { AltitudeMeter, Compass, FuelTank } from "./gauges";
+import { AltitudeMeter, Compass, FuelTank, PressureBar } from "./gauges";
 import { Big, Card, LABEL, Row } from "./panel";
 
 /** Altitude now, best so far, and a log strip from ground to space. */
@@ -36,6 +44,9 @@ export function MotionPanel({ className = "" }: { className?: string }) {
   const s = useFlightStore((st) => st.state);
   const speed = Math.hypot(s.vx, s.vy);
   const accel = Math.hypot(s.ax, s.ay);
+  const { q, mach } = airflow(s);
+  // Max Q: the moment the air pushes hardest, as it starts to ease off.
+  const atMaxQ = s.phase === "flying" && q > 5_000 && q >= s.maxQ * 0.97;
   return (
     <Card title="Velocity" className={className}>
       <Big value={fmtInt(speed)} unit="m/s" />
@@ -46,6 +57,28 @@ export function MotionPanel({ className = "" }: { className?: string }) {
         <Row label="Acceleration">{fmtOne(accel)} m/s²</Row>
         <Row label="G-force">{fmtOne(accel / G0)} g</Row>
       </dl>
+      <div className="mt-2 border-t-2 border-dashed border-pen/20 pt-2">
+        <div className="flex items-center justify-between gap-2">
+          <p
+            className={LABEL}
+            title="How hard the oncoming air pushes on the rocket (½ × air density × speed²)"
+          >
+            Air pressure
+          </p>
+          {atMaxQ && (
+            <span className="rounded-[6px] border-2 border-pen bg-toon-red px-1.5 font-display text-xs font-semibold text-paper-light">
+              MAX Q
+            </span>
+          )}
+        </div>
+        <PressureBar q={q} limit={MAX_Q_LIMIT} warn={MAX_Q_WARN} />
+        <dl>
+          <Row label="Pressure">
+            {fmtOne(q / 1000)} / {fmtInt(MAX_Q_LIMIT / 1000)} kPa
+          </Row>
+          <Row label="Mach">{fmtOne(mach)}</Row>
+        </dl>
+      </div>
       <div className="mt-2 flex items-center justify-between border-t-2 border-dashed border-pen/20 pt-2">
         <div>
           <p className={LABEL}>Heading</p>

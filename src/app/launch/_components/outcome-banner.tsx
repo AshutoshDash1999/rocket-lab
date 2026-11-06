@@ -31,6 +31,13 @@ function outcomeFor(cfg: FlightConfig, s: FlightState): Outcome | null {
         tone: "bg-toon-green",
       };
     case "crashed":
+      if (s.crashReason === "breakup")
+        return {
+          title: "Broke apart!",
+          note: `The air pushed with ${fmtInt(s.maxQ / 1000)} kPa at ${fmtInt(s.impactSpeed)} m/s, more than the rocket can take. Real rockets throttle down through Max Q.`,
+          tone: "bg-[#ffb3a8]",
+          delayed: true,
+        };
       return s.crashReason === "tilt"
         ? {
             title: "Tipped over!",
@@ -105,6 +112,7 @@ export function OutcomeBanner() {
     { label: "Max altitude", value: `${alt.value} ${alt.unit}` },
     { label: "Top speed", value: `${fmtInt(state.maxSpeed)} m/s` },
     { label: "Flight time", value: fmtClock(state.t) },
+    { label: "Max Q", value: `${fmtOne(state.maxQ / 1000)} kPa` },
   ];
 
   return (

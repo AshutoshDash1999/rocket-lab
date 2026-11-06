@@ -65,6 +65,22 @@ const CHUTE_MAX_LOAD = 3.8e6;
 /** Below this air density (~35 km) a canopy can't inflate, kg/m³. */
 const CHUTE_MIN_DENSITY = 0.02;
 
+// Air -----------------------------------------------------------------------
+/** Compressed air for the steering jets, kg. The capsule carries the big tank. */
+const RCS_CAPSULE_AIR = 25;
+/** Without a capsule, a small built-in bottle still allows some steering, kg. */
+const RCS_BUILTIN_AIR = 8;
+/** Air used while a steering jet fires, kg/s. */
+const RCS_USE = 1;
+/** Dynamic pressure the airframe survives, Pa. Past this it breaks apart. */
+export const MAX_Q_LIMIT = 50_000;
+/** Above this fraction of the limit, warn the player to throttle down. */
+export const MAX_Q_WARN = 0.75;
+/** Heating proxy √ρ·v³ at which the glow is full. */
+const HEAT_FULL = 6e7;
+/** Below this density (~15 km) there is too little moisture for a vapor cone, kg/m³. */
+const VAPOR_MIN_DENSITY = 0.19;
+
 const rad = (deg: number) => (deg * Math.PI) / 180;
 /** Steering rate without and with fins, rad/s. */
 const TURN_RATE = rad(30);
@@ -88,7 +104,8 @@ export type FlightPhase =
   /** Released but never left the pad: out of fuel or no engine. */
   | "grounded";
 
-export type CrashReason = "speed" | "tilt";
+/** speed/tilt: bad touchdown. breakup: torn apart by air pressure in flight. */
+export type CrashReason = "speed" | "tilt" | "breakup";
 
 /**
  * packed: in its bag. armed: deployed in air too thin to fill, waits for
@@ -147,6 +164,10 @@ export interface FlightState {
   crashReason: CrashReason | null;
   /** Largest lean from upright while under power, radians */
   maxTilt: number;
+  /** Compressed air left for the steering jets, kg */
+  air: number;
+  /** Highest dynamic pressure so far, Pa */
+  maxQ: number;
 }
 
 export const TERMINAL: ReadonlySet<FlightPhase> = new Set([
@@ -201,8 +222,16 @@ export function initialFlight(cfg: FlightConfig): FlightState {
     impactSpeed: 0,
     crashReason: null,
     maxTilt: 0,
+    air: rcsCapacity(cfg),
+    maxQ: 0,
   };
 }
+
+/** Compressed air the rocket starts with, kg. */
+export const rcsCapacity = (cfg: FlightConfig) =>
+  cfg.stages.some((st) => st.parts.some((p) => p.partId === "capsule"))
+    ? RCS_CAPSULE_AIR
+    : RCS_BUILTIN_AIR;
 
 // Stage helpers ------------------------------------------------------------
 
@@ -279,8 +308,12 @@ export const wrapAngle = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 const densityAt = (alt: number) =>
   SEA_LEVEL_DENSITY * Math.exp(-Math.max(0, alt) / SCALE_HEIGHT);
 
+/** Speed of sound, m/s: falls with temperature up to the tropopause, then holds. */
+const soundSpeedAt = (alt: number) =>
+  alt >= 11_000 ? 295 : 340 - (45 * Math.max(0, alt)) / 11_000;
+
 /** Dynamic pressure ½ρv², Pa. */
-const dynamicPressure = (s: FlightState) =>
+export const dynamicPressure = (s: FlightState) =>
   0.5 * densityAt(s.alt) * (s.vx * s.vx + s.vy * s.vy);
 
 /** Seconds for a canopy to fill at this speed: faster air fills it faster. */
@@ -473,12 +506,14 @@ export function step(
   if (activeFuel(s) === 0) s.engineOn = false;
   const mass = massOf(cfg, s);
 
-  // Steering only bites once off the ground. The capsule does the steering.
-  if (s.airborne) {
+  // Steering only bites once off the ground, and only while the jets have air.
+  if (s.airborne && steer !== 0 && s.air > 0) {
     const rate =
       (left.hasFins ? FIN_TURN_RATE : TURN_RATE) *
       (left.hasCapsule ? 1 : NO_CAPSULE_TURN);
-    s.heading = wrapAngle(s.heading + steer * rate * dt);
+    const use = Math.min(1, s.air / (RCS_USE * dt));
+    s.heading = wrapAngle(s.heading + steer * rate * dt * use);
+    s.air = Math.max(0, s.air - RCS_USE * dt);
   }
 
   stepChute(cfg, s, dt);
@@ -560,6 +595,20 @@ export function step(
   s.maxAlt = Math.max(s.maxAlt, s.alt);
   s.maxSpeed = Math.max(s.maxSpeed, Math.hypot(s.vx, s.vy));
 
+  // Air pressing harder than the airframe can take tears it apart.
+  if (s.airborne && !TERMINAL.has(s.phase)) {
+    const q = dynamicPressure(s);
+    s.maxQ = Math.max(s.maxQ, q);
+    if (q > MAX_Q_LIMIT) {
+      s.phase = "crashed";
+      s.crashReason = "breakup";
+      s.impactSpeed = Math.hypot(s.vx, s.vy);
+      s.vx = s.vy = s.ax = s.ay = 0;
+      s.engineOn = false;
+      return s;
+    }
+  }
+
   if (s.alt >= SPACE_ALT) s.phase = "space";
   else if (s.phase === "flying" && !s.airborne && !canStillThrust(cfg, s)) {
     s.phase = "grounded";
@@ -567,6 +616,42 @@ export function step(
   }
 
   return s;
+}
+
+// Airflow, for drawing -------------------------------------------------------
+
+export interface Airflow {
+  /** Dynamic pressure, Pa */
+  q: number;
+  mach: number;
+  /** kg/m³ */
+  density: number;
+  speed: number;
+  /** Direction the rocket moves, radians from straight up; positive = right. */
+  travel: number;
+  /** Heating on the leading face, 0–1 */
+  heat: number;
+  /** Strength of the vapor cone around Mach 1, 0–1 */
+  vapor: number;
+}
+
+export function airflow(s: FlightState): Airflow {
+  const speed = Math.hypot(s.vx, s.vy);
+  const density = densityAt(s.alt);
+  const mach = speed / soundSpeedAt(s.alt);
+  const near = Math.max(0, 1 - Math.abs(mach - 1) / 0.12);
+  return {
+    q: dynamicPressure(s),
+    mach,
+    density,
+    speed,
+    travel: Math.atan2(s.vx, s.vy),
+    heat: Math.min(1, (Math.sqrt(density) * speed ** 3) / HEAT_FULL),
+    vapor:
+      density >= VAPOR_MIN_DENSITY
+        ? near * Math.min(1, (density - VAPOR_MIN_DENSITY) / 0.2 + 0.4)
+        : 0,
+  };
 }
 
 // Crash debrief ---------------------------------------------------------------
@@ -582,6 +667,21 @@ export interface CrashTip {
 export function crashAdvice(cfg: FlightConfig, s: FlightState): CrashTip[] {
   if (s.phase !== "crashed") return [];
   const had = remaining(cfg, initialFlight(cfg));
+  if (s.crashReason === "breakup") {
+    const kq = Math.round(s.maxQ / 1000);
+    const out: CrashTip[] = [
+      {
+        missing: "Too much power in thick air",
+        fix: `Air pressure hit ${kq} kPa. Throttle down around Max Q (the thick lower air), then back up once it eases.`,
+      },
+    ];
+    if (!had.hasNose)
+      out.push({
+        missing: "No nose cone",
+        fix: "A pointed top slips through the air; a blunt one takes the full push.",
+      });
+    return out;
+  }
   const tilt = s.crashReason === "tilt";
   const deg = Math.round((s.maxTilt * 180) / Math.PI);
   const tips: { tip: CrashTip; rank: number }[] = [];
