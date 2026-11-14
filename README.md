@@ -1,36 +1,81 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Rocket Lab
+
+> Build it, launch it, crash it, try again.
+
+Rocket Lab is a playful web app where you design a rocket from a catalog of parts on a blueprint canvas, launch it, and watch the flight with live telemetry. Save your blueprints and share them with others.
+
+<!-- Screenshot: replace the placeholder below with a real image, e.g. docs/screenshot.png -->
+![Rocket Lab screenshot](docs/screenshot.png)
+
+## Features
+
+- **Build** – drag parts onto a blueprint canvas, with zoom controls.
+- **Launch** – countdown, flight view, gauges, telemetry, parachute control, and crash/success outcomes with sound.
+- **Blueprints** – save your designs and manage them from one place.
+- **Share** – public blueprint pages (`/b/[id]`) with generated Open Graph images.
+- **Auth** – Google sign-in via Neon Auth (Managed Better Auth), with onboarding for new users.
+
+## Tech Stack
+
+- [Next.js](https://nextjs.org) 16 (App Router) with React 19 and the React Compiler
+- [Tailwind CSS](https://tailwindcss.com) 4
+- [Neon](https://neon.com) Postgres (`@neondatabase/serverless`) and Neon Auth
+- [Zustand](https://zustand.docs.pmnd.rs) for client state
+- [Biome](https://biomejs.dev) for linting and formatting
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
+
+- Node.js 20+
+- A Neon project (database + auth)
+
+### Setup
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+cp .env.example .env.local   # then fill in the values
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+| Variable | Purpose |
+| --- | --- |
+| `DATABASE_URL`, `DATABASE_URL_POOLED`, `DATABASE_URL_UNPOOLED` | Postgres connection strings |
+| `NEON_AUTH_BASE_URL`, `NEON_AUTH_COOKIE_SECRET` | Neon Managed Better Auth |
+| `NEON_BRANCH`, `NEON_BRANCH_ID`, `NEON_FUNCTION_HOST_SUFFIX` | Neon branch / functions |
+| `NEXT_PUBLIC_APP_URL` | Public URL of the app |
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Apply the SQL migrations in [db/migrations](db/migrations) to your database.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### Run
 
-## Learn More
+```bash
+npm run dev          # http://localhost:3000
+npm run dev:https    # with local HTTPS (needed for some auth flows)
+```
 
-To learn more about Next.js, take a look at the following resources:
+## Scripts
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| Command | Description |
+| --- | --- |
+| `npm run dev` | Start the dev server |
+| `npm run build` | Production build |
+| `npm start` | Run the production build |
+| `npm run lint` | Lint with Biome |
+| `npm run format` | Format with Biome |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Project Structure
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```
+src/
+  app/
+    page.tsx        # sign-in landing
+    onboarding/     # first-time user setup
+    blueprints/     # saved designs
+    build/[id]/     # rocket builder
+    launch/         # flight simulation
+    b/[id]/         # shared blueprint page + OG image
+    api/auth/       # auth routes
+  components/       # shared UI
+  lib/              # users, helpers
+db/migrations/      # SQL migrations
+```
