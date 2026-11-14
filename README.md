@@ -5,7 +5,7 @@
 Rocket Lab is a playful web app where you design a rocket from a catalog of parts on a blueprint canvas, launch it, and watch the flight with live telemetry. Save your blueprints and share them with others.
 
 <!-- Screenshot: replace the placeholder below with a real image, e.g. docs/screenshot.png -->
-![Rocket Lab screenshot](docs/screenshot.png)
+<img width="2520" height="1414" alt="image" src="https://github.com/user-attachments/assets/caf27a03-0615-44df-ac43-85987549fd0d" />
 
 ## Features
 
