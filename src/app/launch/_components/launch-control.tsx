@@ -86,6 +86,7 @@ function KeyHints({ className = "" }: { className?: string }) {
 export function LaunchControl() {
   const [ready, setReady] = useState(false);
   const hasRocket = useFlightStore((st) => st.parts.length > 0);
+  const returnTo = useRocketStore((st) => st.returnTo);
 
   // Rehydrate the handed-over rocket after mount so server and client render match.
   useEffect(() => {
@@ -160,11 +161,11 @@ export function LaunchControl() {
 
   const backLink = (
     <Link
-      href="/build"
-      aria-label="Back to builder"
+      href={returnTo}
+      aria-label="Back"
       className={`${toonButton} bg-paper-light px-3 sm:px-4`}
     >
-      ←<span className="hidden sm:inline">Back to builder</span>
+      ←<span className="hidden sm:inline">Back</span>
     </Link>
   );
 
@@ -186,7 +187,7 @@ export function LaunchControl() {
                 Build one first, then hit Launch in the builder.
               </p>
               <Link
-                href="/build"
+                href="/blueprints"
                 className={`${toonButton} mt-5 bg-toon-yellow`}
               >
                 Go build a rocket

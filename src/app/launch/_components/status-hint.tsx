@@ -18,6 +18,7 @@ import {
   twrOf,
 } from "@/lib/rocket/flight";
 import { useFlightStore } from "@/lib/rocket/store/flight-store";
+import { useRocketStore } from "@/lib/rocket/store/rocket-store";
 
 interface Hint {
   text: string;
@@ -115,6 +116,7 @@ export function StatusHint() {
   const cfg = useFlightStore((st) => st.cfg);
   const state = useFlightStore((st) => st.state);
   const hint = hintFor(cfg, state);
+  const returnTo = useRocketStore((st) => st.returnTo);
 
   return (
     <output
@@ -129,10 +131,10 @@ export function StatusHint() {
       {hint?.text}
       {hint?.rebuild && (
         <Link
-          href="/build"
+          href={returnTo}
           className="font-sans text-base font-extrabold text-pen underline decoration-2 underline-offset-2"
         >
-          Back to builder
+          {returnTo.startsWith("/build") ? "Back to builder" : "Back"}
         </Link>
       )}
     </output>

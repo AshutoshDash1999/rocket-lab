@@ -11,6 +11,7 @@ import {
   totalThrust,
 } from "@/lib/rocket/flight";
 import { useFlightStore } from "@/lib/rocket/store/flight-store";
+import { useRocketStore } from "@/lib/rocket/store/rocket-store";
 import { fmtAlt, fmtClock, fmtDeg, fmtInt, fmtOne } from "./format";
 import { LABEL } from "./panel";
 
@@ -103,6 +104,7 @@ export function OutcomeBanner() {
   const cfg = useFlightStore((st) => st.cfg);
   const state = useFlightStore((st) => st.state);
   const reset = useFlightStore((st) => st.reset);
+  const returnTo = useRocketStore((st) => st.returnTo);
   const outcome = outcomeFor(cfg, state);
   if (!outcome) return null;
   const tips: CrashTip[] = crashAdvice(cfg, state);
@@ -159,8 +161,8 @@ export function OutcomeBanner() {
             ))}
           </dl>
           <div className="mt-5 flex justify-center gap-3">
-            <Link href="/build" className={`${toonButton} bg-paper-light`}>
-              Back to builder
+            <Link href={returnTo} className={`${toonButton} bg-paper-light`}>
+              Back
             </Link>
             <button
               type="button"

@@ -6,6 +6,10 @@ const nextConfig: NextConfig = {
     agentFeedback: true,
   },
   cacheComponents: true,
+  // The builder now lives at /build/[id]; old links land on the blueprint list.
+  async redirects() {
+    return [{ source: "/build", destination: "/blueprints", permanent: false }];
+  },
   partialPrefetching: true,
   reactCompiler: true,
   turbopack: {

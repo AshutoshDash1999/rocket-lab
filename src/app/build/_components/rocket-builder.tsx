@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { saveBlueprintParts } from "@/app/blueprints/actions";
 import { PartShape, partSize } from "@/components/common/part-shape";
 import {
   type Box,
@@ -14,7 +15,6 @@ import {
   type Snap,
   screenToWorld,
   snapPosition,
-  stackColumn,
   ZOOM_STEP,
   zoomAt,
 } from "@/lib/rocket/canvas";
@@ -25,15 +25,11 @@ import { computeRocketStats } from "@/lib/rocket/stats";
 import { useRocketStore } from "@/lib/rocket/store/rocket-store";
 import { BlueprintCanvas } from "./blueprint-canvas";
 import { PartsCatalog } from "./parts-catalog";
-import { TopBar } from "./top-bar";
+import { type SaveStatus, TopBar } from "./top-bar";
 
-const STARTER: PartId[] = [
-  "parachute",
-  "capsule",
-  "tank-large",
-  "engine-large",
-  "legs",
-];
+/** Quiet time (ms) after the last edit before autosaving. */
+const SAVE_DELAY = 800;
+const RETRY_DELAY = 4000;
 
 /** Pointer travel (px) before a press turns into a drag, so clicks stay clicks. */
 const DRAG_THRESHOLD = 4;
@@ -85,8 +81,19 @@ const boxOf = (p: PlacedPart): PartBox => ({
   ...partSize(p.partId),
 });
 
-export function RocketBuilder() {
-  const [parts, setParts] = useState<PlacedPart[]>([]);
+export interface BuilderBlueprint {
+  id: string;
+  name: string;
+  parts: PlacedPart[];
+}
+
+export function RocketBuilder({ blueprint }: { blueprint: BuilderBlueprint }) {
+  // Start from the saved parts on the very first render. Never render an empty
+  // placeholder first: an unmount flush (or Strict Mode's remount) would save it.
+  // Saved rockets may predate a part's current drawing size: re-seat them.
+  const [initial] = useState(() => settleStack(blueprint.parts, partSize));
+  const [parts, setParts] = useState<PlacedPart[]>(initial);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
   const [drag, setDragState] = useState<Drag | null>(null);
   const [camera, setCameraState] = useState<Camera>({ x: 0, y: 0, zoom: 1 });
   const [panning, setPanning] = useState<"ready" | "active" | null>(null);
@@ -99,11 +106,55 @@ export function RocketBuilder() {
   const cameraRef = useRef(camera);
   const panRef = useRef<Pan | null>(null);
   const spaceRef = useRef(false);
-  const nextId = useRef(0);
+  const nextId = useRef(nextUidAfter(initial));
+  /** JSON of what the server has. */
+  const savedRef = useRef(JSON.stringify(blueprint.parts));
+  const flushRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     partsRef.current = parts;
   }, [parts]);
+
+  // Autosave: after each edit settles, send the parts if they changed.
+  useEffect(() => {
+    // Drop any save from an earlier render; only this render's parts may be sent.
+    flushRef.current = () => {};
+    const json = JSON.stringify(parts);
+    if (json === savedRef.current) return;
+    let timer: ReturnType<typeof setTimeout>;
+    let done = false;
+    const save = async () => {
+      clearTimeout(timer);
+      if (done) return;
+      done = true;
+      setSaveStatus("saving");
+      try {
+        const res = await saveBlueprintParts(blueprint.id, parts);
+        if (!res.ok) throw new Error(res.error);
+        savedRef.current = json;
+        if (JSON.stringify(partsRef.current) === json) setSaveStatus("saved");
+      } catch {
+        setSaveStatus("error");
+        // Retry by re-running this effect's save on a fresh timer.
+        done = false;
+        timer = setTimeout(save, RETRY_DELAY);
+      }
+    };
+    setSaveStatus("saving");
+    timer = setTimeout(save, SAVE_DELAY);
+    flushRef.current = () => void save();
+    return () => clearTimeout(timer);
+  }, [parts, blueprint.id]);
+
+  // Leaving mid-debounce (Launch, back link, tab close) still saves.
+  useEffect(() => {
+    const flush = () => flushRef.current();
+    window.addEventListener("pagehide", flush);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      flush();
+    };
+  }, []);
 
   const info = analyzeStack(parts, partSize);
   const stats = computeRocketStats(info.chain.map((p) => p.partId));
@@ -145,21 +196,6 @@ export function RocketBuilder() {
     };
     setPanning("active");
   };
-
-  // The rocket last sent to the pad, or a starter rocket centred near the bottom.
-  useLayoutEffect(() => {
-    const b = canvasBounds();
-    void Promise.resolve(useRocketStore.persist.rehydrate()).then(() => {
-      // Saved rockets may predate a part's current drawing size: re-seat them.
-      const saved = settleStack(useRocketStore.getState().parts, partSize);
-      if (saved.length > 0) {
-        nextId.current = nextUidAfter(saved);
-        setParts(saved);
-      } else if (b) {
-        setParts(stackColumn(STARTER, b.w / 2, b.h - 40, partSize));
-      }
-    });
-  }, []);
 
   // Pointer-driven drag: catalog → canvas adds, canvas → canvas moves,
   // canvas → sidebar removes. No drag-and-drop library needed.
@@ -392,9 +428,16 @@ export function RocketBuilder() {
       className={`flex h-dvh flex-col overflow-hidden bg-paper select-none ${drag ? "cursor-grabbing" : ""}`}
     >
       <TopBar
+        blueprintId={blueprint.id}
+        name={blueprint.name}
+        saveStatus={saveStatus}
         stats={stats}
         info={info}
-        onLaunch={() => useRocketStore.getState().setParts(info.chain)}
+        onLaunch={() =>
+          useRocketStore
+            .getState()
+            .setParts(info.chain, `/build/${blueprint.id}`)
+        }
         onClear={() => edit(() => [])}
       />
       <div className="flex min-h-0 flex-1 flex-col-reverse md:grid md:grid-cols-[300px_minmax(0,1fr)]">

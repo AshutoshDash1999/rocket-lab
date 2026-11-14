@@ -5,7 +5,9 @@ import type { PlacedPart } from "../canvas";
 interface RocketStore {
   /** The rocket as last handed from the builder to the launch pad. */
   parts: PlacedPart[];
-  setParts: (parts: PlacedPart[]) => void;
+  /** Where the launch pad's "back" buttons go: the builder or share page it came from. */
+  returnTo: string;
+  setParts: (parts: PlacedPart[], returnTo: string) => void;
 }
 
 /**
@@ -18,7 +20,8 @@ export const useRocketStore = create<RocketStore>()(
   persist(
     (set) => ({
       parts: [],
-      setParts: (parts) => set({ parts }),
+      returnTo: "/blueprints",
+      setParts: (parts, returnTo) => set({ parts, returnTo }),
     }),
     {
       name: "rocket-lab:rocket",
