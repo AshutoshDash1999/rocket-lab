@@ -23,6 +23,9 @@ export default async function Image({
   const blueprint = await getBlueprint(id);
   const parts = blueprint?.parts ?? [];
   const layout = parts.length > 0 ? blueprintLayout(parts) : null;
+  // Satori stretches the viewBox to the svg box, so size the box to the
+  // layout's own aspect ratio (fit inside 1100x570) to avoid squishing.
+  const fit = layout ? Math.min(1100 / layout.w, 570 / layout.h) : 1;
 
   return new ImageResponse(
     <div
@@ -40,10 +43,9 @@ export default async function Image({
       {layout ? (
         <svg
           aria-hidden="true"
-          width={1100}
-          height={570}
+          width={layout.w * fit}
+          height={layout.h * fit}
           viewBox={`${layout.x} ${layout.y} ${layout.w} ${layout.h}`}
-          preserveAspectRatio="xMidYMid meet"
         >
           {layout.ordered.map((p) => (
             <g key={p.uid} transform={`translate(${p.x} ${p.y})`}>
