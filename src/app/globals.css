@@ -677,3 +677,11 @@ body {
     opacity: 0;
   }
 }
+
+/* Card menus pop up from their trigger. */
+@keyframes rl-menu-in {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+}
