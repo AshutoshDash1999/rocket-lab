@@ -1,23 +1,32 @@
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { PartShape } from "@/components/common/part-shape";
+import { safeNext } from "@/lib/next-path";
 import { getAppUser, getSessionUser } from "@/lib/users";
 import { GoogleSignInButton } from "./_components/google-sign-in-button";
 import { LaunchScene } from "./_components/launch-scene";
 
 /** Signed-in visitors skip the login card. */
-async function RedirectIfSignedIn() {
+async function RedirectIfSignedIn({
+  searchParams,
+}: {
+  searchParams: PageProps<"/">["searchParams"];
+}) {
   const user = await getSessionUser();
   if (!user) return null;
-  const appUser = await getAppUser(user.id);
-  redirect(appUser ? "/build" : "/onboarding");
+  const [appUser, { next }] = await Promise.all([
+    getAppUser(user.id),
+    searchParams,
+  ]);
+  const target = safeNext(next);
+  redirect(appUser ? target : `/onboarding?next=${encodeURIComponent(target)}`);
 }
 
-export default function Home() {
+export default function Home({ searchParams }: PageProps<"/">) {
   return (
     <main className="relative isolate flex min-h-dvh flex-1 flex-col overflow-hidden">
       <Suspense fallback={null}>
-        <RedirectIfSignedIn />
+        <RedirectIfSignedIn searchParams={searchParams} />
       </Suspense>
 
       {/* Card first in the DOM so it gets focus before the background rocket. */}

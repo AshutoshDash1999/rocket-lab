@@ -7,7 +7,7 @@ import { completeOnboarding, type OnboardingState } from "./actions";
 const field =
   "h-11 w-full rounded-[8px] border-[2.5px] border-pen bg-white px-3 font-sans text-base text-pen outline-none focus-visible:shadow-[3px_3px_0_var(--pen)]";
 
-export function OnboardingForm() {
+export function OnboardingForm({ next }: { next: string }) {
   const [state, action, pending] = useActionState<OnboardingState, FormData>(
     completeOnboarding,
     {},
@@ -16,6 +16,7 @@ export function OnboardingForm() {
 
   return (
     <form action={action} className="flex w-full flex-col gap-4" noValidate>
+      <input type="hidden" name="next" value={next} />
       <label className="flex flex-col gap-1">
         <span className="font-display text-lg font-semibold text-pen">
           Username

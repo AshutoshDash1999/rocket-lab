@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { sql } from "@/lib/db";
+import { safeNext } from "@/lib/next-path";
 import { getAppUser, getSessionUser } from "@/lib/users";
 
 export type OnboardingState = {
@@ -17,7 +18,8 @@ export async function completeOnboarding(
 ): Promise<OnboardingState> {
   const user = await getSessionUser();
   if (!user) redirect("/");
-  if (await getAppUser(user.id)) redirect("/build");
+  const next = safeNext(formData.get("next"));
+  if (await getAppUser(user.id)) redirect(next);
 
   const username = String(formData.get("username") ?? "")
     .trim()
@@ -53,11 +55,11 @@ export async function completeOnboarding(
         };
       }
       // Primary key: this account was onboarded in another tab.
-      redirect("/build");
+      redirect(next);
     }
     console.error("onboarding insert failed", e);
     return { errors: { form: "Something went wrong. Try again." }, values };
   }
 
-  redirect("/build");
+  redirect(next);
 }

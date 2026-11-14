@@ -12,9 +12,13 @@ export function GoogleSignInButton() {
     setPending(true);
     setError(null);
     try {
+      // Carry ?next= (e.g. a shared blueprint) through onboarding.
+      const next = new URLSearchParams(window.location.search).get("next");
       const { error } = await authClient.signIn.social({
         provider: "google",
-        callbackURL: "/onboarding",
+        callbackURL: next
+          ? `/onboarding?next=${encodeURIComponent(next)}`
+          : "/onboarding",
       });
       if (error) {
         setError(error.message ?? "Couldn't sign in with Google.");
