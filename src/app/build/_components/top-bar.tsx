@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { PartShape } from "@/components/common/part-shape";
 import { RocketStats } from "@/components/common/rocket-stats";
+import { SignOutButton } from "@/components/common/sign-out-button";
 import { toonButton } from "@/components/common/toon-button";
 import type { StackInfo } from "@/lib/rocket/stack";
 import type { RocketStats as Stats } from "@/lib/rocket/stats";
@@ -40,6 +41,7 @@ export function TopBar({
       </div>
 
       <div className="ml-auto flex items-center gap-2 sm:gap-3">
+        <SignOutButton />
         <button
           type="button"
           onClick={onClear}
