@@ -10,6 +10,7 @@ import {
   thrustNow,
 } from "@/lib/rocket/flight";
 import { useFlightStore } from "@/lib/rocket/store/flight-store";
+import { primeLaunchAudio } from "../_hooks/use-launch-audio";
 import { fmtInt } from "./format";
 import { AirTank, PowerDial } from "./gauges";
 import { CARD, LABEL } from "./panel";
@@ -89,7 +90,10 @@ export function ControlPanel({ className = "" }: { className?: string }) {
     >
       <button
         type="button"
-        onClick={launch}
+        onClick={() => {
+          primeLaunchAudio();
+          launch();
+        }}
         disabled={s.phase !== "pad"}
         aria-keyshortcuts="Space"
         className={`${toonButton} h-14 min-w-36 whitespace-nowrap bg-toon-red px-6 text-2xl tracking-wide shadow-[4px_4px_0_var(--pen)] ${

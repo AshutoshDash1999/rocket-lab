@@ -6,6 +6,7 @@ import { PartShape } from "@/components/common/part-shape";
 import { toonButton } from "@/components/common/toon-button";
 import { useFlightStore } from "@/lib/rocket/store/flight-store";
 import { useRocketStore } from "@/lib/rocket/store/rocket-store";
+import { primeLaunchAudio, useLaunchAudio } from "../_hooks/use-launch-audio";
 import { ControlPanel } from "./control-panel";
 import { FlightView } from "./flight-view";
 import { fmtClock } from "./format";
@@ -87,6 +88,7 @@ export function LaunchControl() {
   const [ready, setReady] = useState(false);
   const hasRocket = useFlightStore((st) => st.parts.length > 0);
   const returnTo = useRocketStore((st) => st.returnTo);
+  useLaunchAudio();
 
   // Rehydrate the handed-over rocket after mount so server and client render match.
   useEffect(() => {
@@ -125,7 +127,13 @@ export function LaunchControl() {
       if (e.repeat && e.code === "Space") return;
       const { state, launch, stage, deployChute, setThrottle, reset } = fs();
       const keys: Record<string, () => void> = {
-        " ": state.phase === "pad" ? launch : stage,
+        " ":
+          state.phase === "pad"
+            ? () => {
+                primeLaunchAudio();
+                launch();
+              }
+            : stage,
         g: stage,
         G: stage,
         p: deployChute,
