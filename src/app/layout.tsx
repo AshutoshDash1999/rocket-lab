@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Caveat, Fredoka, Nunito } from "next/font/google";
+import { SiteFooter } from "@/components/common/site-footer";
 import "./globals.css";
 
 const fredoka = Fredoka({
@@ -29,7 +30,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="en"
       className={`${fredoka.variable} ${nunito.variable} ${caveat.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">{children}
+        <SiteFooter />
+      </body>
     </html>
   );
 }
