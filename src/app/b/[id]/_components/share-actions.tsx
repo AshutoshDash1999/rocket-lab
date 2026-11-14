@@ -23,16 +23,22 @@ function SaveButton() {
 export function ShareActions({
   id,
   chain,
-  isOwner,
+  viewer,
 }: {
   id: string;
   /** The joined rocket column, top → bottom: what flies. */
   chain: PlacedPart[];
-  isOwner: boolean;
+  /** Signed-out visitors are sent to sign in, then back here. */
+  viewer: "owner" | "member" | "guest";
 }) {
+  const signIn = `/?next=${encodeURIComponent(`/b/${id}`)}`;
   return (
     <div className="flex flex-wrap items-center justify-end gap-3">
-      {isOwner ? (
+      {viewer === "guest" ? (
+        <Link href={signIn} className={`${toonButton} bg-toon-yellow`}>
+          Sign in to save
+        </Link>
+      ) : viewer === "owner" ? (
         <Link href={`/build/${id}`} className={`${toonButton} bg-paper-light`}>
           Edit blueprint
         </Link>
@@ -51,8 +57,11 @@ export function ShareActions({
         </button>
       ) : (
         <Link
-          href="/launch"
-          onClick={() => useRocketStore.getState().setParts(chain, `/b/${id}`)}
+          href={viewer === "guest" ? signIn : "/launch"}
+          onClick={() =>
+            viewer !== "guest" &&
+            useRocketStore.getState().setParts(chain, `/b/${id}`)
+          }
           className={`${toonButton} bg-toon-red sm:px-5`}
         >
           Launch

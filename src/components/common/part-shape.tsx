@@ -499,6 +499,20 @@ const ART: Record<PartId | "flame", Art> = {
   },
 };
 
+/** A part's inked art as bare SVG elements (no wrapper component), for renderers like next/og. */
+export function partArt(partId: PartId) {
+  return (
+    <g
+      stroke={PEN}
+      strokeWidth={3.5}
+      strokeLinejoin="round"
+      strokeLinecap="round"
+    >
+      {ART[partId].body}
+    </g>
+  );
+}
+
 function Drawing({ art, fit }: { art: Art; fit: boolean }) {
   return (
     <svg

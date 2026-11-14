@@ -10,25 +10,44 @@ import { toonButton } from "@/components/common/toon-button";
 import { getBlueprint } from "@/lib/blueprints";
 import { analyzeStack } from "@/lib/rocket/stack";
 import { computeRocketStats } from "@/lib/rocket/stats";
-import { requireOnboarded } from "@/lib/users";
+import { getAppUser, getSessionUser } from "@/lib/users";
 import { ShareActions } from "./_components/share-actions";
 
-export const metadata: Metadata = {
-  title: "Shared blueprint · Rocket Lab",
-};
+export async function generateMetadata({
+  params,
+}: PageProps<"/b/[id]">): Promise<Metadata> {
+  const { id } = await params;
+  const blueprint = await getBlueprint(id);
+  if (!blueprint) return { title: "Blueprint not found · Rocket Lab" };
+
+  const title = `${blueprint.name} by @${blueprint.owner_username}`;
+  const description =
+    "A rocket blueprint from Rocket Lab. Open it to launch it.";
+  return {
+    title: `${title} · Rocket Lab`,
+    description,
+    openGraph: { title, description, type: "website" },
+    twitter: { card: "summary_large_image", title, description },
+  };
+}
+
+async function getViewer() {
+  const session = await getSessionUser();
+  return session ? getAppUser(session.id) : null;
+}
 
 async function SharedBlueprint({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const [{ id }, user] = await Promise.all([params, requireOnboarded()]);
+  const [{ id }, viewer] = await Promise.all([params, getViewer()]);
   const blueprint = await getBlueprint(id);
   if (!blueprint) notFound();
 
   const info = analyzeStack(blueprint.parts, partSize);
   const stats = computeRocketStats(info.chain.map((p) => p.partId));
-  const isOwner = blueprint.owner_id === user.user_id;
+  const isOwner = viewer?.user_id === blueprint.owner_id;
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-5 px-4 py-6 md:py-10">
@@ -51,7 +70,7 @@ async function SharedBlueprint({
           <ShareActions
             id={blueprint.id}
             chain={info.chain}
-            isOwner={isOwner}
+            viewer={isOwner ? "owner" : viewer ? "member" : "guest"}
           />
         </div>
       </div>

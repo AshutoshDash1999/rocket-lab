@@ -18,6 +18,7 @@ const caveat = Caveat({
 });
 
 export const metadata: Metadata = {
+  metadataBase: process.env.NEXT_PUBLIC_APP_URL,
   title: "Rocket Lab",
   description: "Build and launch your own rockets",
 };

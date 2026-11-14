@@ -1,4 +1,4 @@
-import type { NextRequest } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth/server";
 
 const authProxy = auth.middleware({
@@ -11,6 +11,9 @@ const authProxy = auth.middleware({
  * headed (e.g. a shared blueprint link) as `?next=` so sign-in returns them.
  */
 export default async function proxy(request: NextRequest) {
+  // Shared blueprints (and their link-preview image) are public so crawlers
+  // and signed-out visitors can open them.
+  if (request.nextUrl.pathname.startsWith("/b/")) return NextResponse.next();
   const res = await authProxy(request);
   const { pathname, search, origin } = request.nextUrl;
   const location = res.headers.get("location");
